@@ -110,7 +110,8 @@ async function uploadXmlToBlobStorage(xmlString, filename) {
   return await uploadBufferToBlob(buffer, filename, 'application/xml');
 }
 
-async function uploadJsonToBlobStorage(jsonString, filename) {
+async function uploadJsonToBlobStorage(threads, filename) {
+  const jsonString = JSON.stringify(threads, null, 2);
   const buffer = Buffer.from(jsonString, 'utf-8');
   return await uploadBufferToBlob(buffer, filename, 'application/json');
 }
