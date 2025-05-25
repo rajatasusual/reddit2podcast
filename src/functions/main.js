@@ -6,6 +6,8 @@ const removeMd = require('remove-markdown');
 const snoowrap = require('snoowrap');
 const sdk = require("microsoft-cognitiveservices-speech-sdk");
 
+const { extractiveSummarization } = require('./summarizer');
+
 // --- Azure Cognitive Services setup ---
 const speechKey = process.env.AZURE_SPEECH_KEY;
 const speechRegion = process.env.AZURE_SPEECH_REGION;
@@ -52,14 +54,27 @@ async function synthesizeSpeechSsml(ssml) {
   });
 }
 
-function generateSsmlEpisode(threads, context) {
+async function generateSsmlEpisode(threads, context) {
   const hostVoice = "en-US-GuyNeural";
   const commenterVoice = "en-US-JennyNeural";
+
+  context.log(`Generating SSML for ${threads.length} threads`);
 
   let ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">`;
 
   // Episode Intro
   ssml += `<voice name="${hostVoice}"><p>Welcome to today's episode of Reddit Top Threads. Let's dive in!<break time="1s"/></p></voice>`;
+
+  //convert threads into documents with titles and comments for summarizer
+  const documents = threads.map(thread => `${thread.title} ${thread.comments.join(' ')}`);
+
+  // Summarize the documents
+  context.log("Summarizing documents...");
+  const summary = await extractiveSummarization(documents, context);
+  context.log("Summarization complete.");
+
+  // Add the summary to the SSML
+  ssml += `<voice name="${hostVoice}"><p>${escapeXml(summary)}</p></voice>`;
 
   threads.forEach((thread, idx) => {
     context.log(`Synthesizing SSML for thread: ${thread.title}`);
@@ -77,7 +92,8 @@ function generateSsmlEpisode(threads, context) {
   // Outro
   ssml += `<voice name="${hostVoice}"><p>That wraps up our episode. Thanks for listening!<break time="1s"/></p></voice>`;
   ssml += `</speak>`;
-  return ssml;
+  
+  return { ssml, summary };
 }
 
 async function uploadBufferToBlob(buffer, filename, contentType = "application/octet-stream") {
@@ -141,7 +157,7 @@ async function getTopThreads(subreddit) {
 
 
 
-async function saveEpisodeMetadata(episodeId, subreddit, audioUrl, jsonUrl, ssmlUrl) {
+async function saveEpisodeMetadata(metadata) {
 
   const tableName = "PodcastEpisodes";
   const tableClient = new TableClient(
@@ -154,12 +170,13 @@ async function saveEpisodeMetadata(episodeId, subreddit, audioUrl, jsonUrl, ssml
 
   const entity = {
     partitionKey: "episodes",
-    rowKey: episodeId,
-    subreddit,
-    audioUrl,
-    jsonUrl,
-    ssmlUrl,
-    createdOn: new Date().toISOString()
+    rowKey: metadata.episodeId,
+    subreddit: metadata.subreddit,
+    audioUrl: metadata.audioUrl,
+    jsonUrl: metadata.jsonUrl,
+    ssmlUrl: metadata.ssmlUrl,
+    createdOn: new Date().toISOString(),
+    summary: metadata.summary
   };
 
   await tableClient.upsertEntity(entity);
@@ -174,13 +191,20 @@ async function reddit2podcast(context) {
     const threads = await getTopThreads(subreddit);
     const jsonUrl = await uploadJsonToBlobStorage(threads, `json/episode-${episodeId}.threads.json`);
 
-    const ssmlScript = generateSsmlEpisode(threads, context);
-    const ssmlUrl = await uploadXmlToBlobStorage(ssmlScript, `xml/episode-${episodeId}.ssml.xml`);
+    const { ssml, summary } = await generateSsmlEpisode(threads, context);
+    const ssmlUrl = await uploadXmlToBlobStorage(ssml, `xml/episode-${episodeId}.ssml.xml`);
 
-    const audioBuffer = await synthesizeSpeechSsml(ssmlScript);
+    const audioBuffer = await synthesizeSpeechSsml(ssml);
     const audioUrl = await uploadAudioToBlobStorage(audioBuffer, `audio/episode-${episodeId}.wav`);
 
-    await saveEpisodeMetadata(episodeId, subreddit, audioUrl, jsonUrl, ssmlUrl);
+    await saveEpisodeMetadata({
+      episodeId,
+      subreddit,
+      audioUrl,
+      jsonUrl,
+      ssmlUrl,
+      summary
+    });
 
     context.log(`Episode metadata saved. Audio URL: ${audioUrl}`);
   } catch (err) {
