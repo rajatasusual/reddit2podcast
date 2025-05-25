@@ -7,6 +7,7 @@
     "test": "echo \"No tests yet...\""
   },
   "dependencies": {
+    "@azure/data-tables": "^13.3.0",
     "@azure/functions": "^4.0.0",
     "@azure/storage-blob": "^12.27.0",
     "dotenv": "^16.5.0",

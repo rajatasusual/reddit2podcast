@@ -1,19 +1,21 @@
 const { app } = require('@azure/functions');
 const { BlobServiceClient } = require('@azure/storage-blob');
+const { TableClient, AzureNamedKeyCredential } = require('@azure/data-tables');
+
 const removeMd = require('remove-markdown');
 const snoowrap = require('snoowrap');
+const sdk = require("microsoft-cognitiveservices-speech-sdk");
 
 // --- Azure Cognitive Services setup ---
 const speechKey = process.env.AZURE_SPEECH_KEY;
 const speechRegion = process.env.AZURE_SPEECH_REGION;
 
-const sdk = require("microsoft-cognitiveservices-speech-sdk");
 const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
 speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm; // WAV PCM
 
 // --- Blob Storage setup ---
 const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
-const containerClient = blobServiceClient.getContainerClient('reddit2podcast-audio');
+const containerClient = blobServiceClient.getContainerClient(`${process.env.AZURE_STORAGE_ACCOUNT}-audio`);
 
 // --- Helpers ---
 
@@ -138,21 +140,49 @@ async function getTopThreads(subreddit) {
 }
 
 
+
+async function saveEpisodeMetadata(episodeId, subreddit, audioUrl, jsonUrl, ssmlUrl) {
+
+  const tableName = "PodcastEpisodes";
+  const tableClient = new TableClient(
+    `https://${process.env.AZURE_STORAGE_ACCOUNT}.table.core.windows.net`,
+    tableName,
+    new AzureNamedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, process.env.AZURE_STORAGE_ACCOUNT_KEY)
+  );
+
+  await tableClient.createTable(); // Creates only if not exists
+
+  const entity = {
+    partitionKey: "episodes",
+    rowKey: episodeId,
+    subreddit,
+    audioUrl,
+    jsonUrl,
+    ssmlUrl,
+    createdOn: new Date().toISOString()
+  };
+
+  await tableClient.upsertEntity(entity);
+}
+
+
 async function reddit2podcast(context) {
   try {
-    const subreddit = 'technology'; // Or parameterize
+    const subreddit = 'technology';
     const episodeId = new Date().toISOString().split('T')[0];
 
     const threads = await getTopThreads(subreddit);
-    await uploadJsonToBlobStorage(threads, `json/episode-${episodeId}.threads.json`);
+    const jsonUrl = await uploadJsonToBlobStorage(threads, `json/episode-${episodeId}.threads.json`);
 
     const ssmlScript = generateSsmlEpisode(threads, context);
-    await uploadXmlToBlobStorage(ssmlScript, `xml/episode-${episodeId}.ssml.xml`);
+    const ssmlUrl = await uploadXmlToBlobStorage(ssmlScript, `xml/episode-${episodeId}.ssml.xml`);
 
     const audioBuffer = await synthesizeSpeechSsml(ssmlScript);
-    const url = await uploadAudioToBlobStorage(audioBuffer, `audio/episode-${episodeId}.wav`);
+    const audioUrl = await uploadAudioToBlobStorage(audioBuffer, `audio/episode-${episodeId}.wav`);
 
-    context.log(`Uploaded audio to: ${url}`);
+    await saveEpisodeMetadata(episodeId, subreddit, audioUrl, jsonUrl, ssmlUrl);
+
+    context.log(`Episode metadata saved. Audio URL: ${audioUrl}`);
   } catch (err) {
     context.log('Error generating podcast:', err);
   }
