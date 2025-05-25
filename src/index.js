@@ -47,7 +47,7 @@ app.setup({
 });
 
 app.http('episodes', {
-  methods: ['GET'],
+  methods: ['POST'],
   authLevel: 'anonymous',
   route: 'episodes',
   handler: async (request, context) => {
