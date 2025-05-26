@@ -103,6 +103,7 @@ async function performSummarization(documents, type, context) {
     return summary;
   } catch (err) {
     context.log("The operation encountered an error:", err);
+    throw err;
   }
 }
 

@@ -84,30 +84,30 @@ ${combinedContent}
 async function synthesizeSsmlChunks(ssmlChunks, context) {
   const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
 
-  const buffers = [];
-
-  for (let i = 0; i < ssmlChunks.length; i++) {
-    const ssml = ssmlChunks[i];
-    context.log(`🔊 Synthesizing chunk ${i + 1}/${ssmlChunks.length}...`);
-
-    const buffer = await new Promise((resolve, reject) => {
+  const synthesizeChunk = async (ssml, index) => {
+    context.log(`🔊 Synthesizing chunk ${index + 1}/${ssmlChunks.length}...`);
+    return new Promise((resolve, reject) => {
       synthesizer.speakSsmlAsync(
         ssml,
         result => {
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-            resolve(Buffer.from(result.audioData));
+            resolve({ index, buffer: Buffer.from(result.audioData) });
           } else {
-            reject(new Error(`Synthesis failed for chunk ${i + 1}`));
+            reject(new Error(`Synthesis failed: ${result.errorDetails}`));
+            synthesizer.close();
           }
         },
         error => reject(error)
       );
     });
+  };
 
-    buffers.push(buffer);
-  }
+  const results = await Promise.all(ssmlChunks.map((ssml, i) => synthesizeChunk(ssml, i)));
 
   synthesizer.close();
+
+  // Sort buffers by their original index to ensure they are combined in order
+  const buffers = results.sort((a, b) => a.index - b.index).map(result => result.buffer);
 
   return mergeWavBuffers(buffers);
 }

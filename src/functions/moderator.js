@@ -3,7 +3,7 @@ const ContentSafetyClient = require("@azure-rest/ai-content-safety").default,
   { isUnexpected } = require("@azure-rest/ai-content-safety");
 const { AzureKeyCredential } = require("@azure/core-auth");
 
-const {default: pRetry, AbortError} = require('p-retry');
+const { default: pRetry, AbortError } = require('p-retry');
 
 require("dotenv").config();
 
@@ -11,19 +11,19 @@ async function moderateContent(text, context) {
   try {
     const endpoint = process.env["CONTENT_SAFETY_ENDPOINT"];
     const key = process.env["CONTENT_SAFETY_KEY"];
-    
+
     const credential = new AzureKeyCredential(key);
     const client = ContentSafetyClient(endpoint, credential);
-    
+
     const analyzeTextOption = { text };
     const analyzeTextParameters = { body: analyzeTextOption };
-    
+
     const result = await client.path("/text:analyze").post(analyzeTextParameters);
-    
+
     if (isUnexpected(result)) {
-        throw result;
+      throw result;
     }
-    
+
     return result.body;
 
   } catch (err) {
@@ -54,9 +54,13 @@ async function moderateThread(thread, context) {
 
   if (titleModerationResult.blocklistsMatch.length > 0) {
     thread.title = 'REDACTED';
+    context.log(`🔍 Redacted title: ${thread.title}`);
   }
   if (commentsModerationResults.some(result => result.blocklistsMatch.length > 0)) {
-    thread.comments = thread.comments.map(comment => 'REDACTED');
+    context.log(`🔍 Redacting Comments`);
+    thread.comments = thread.comments.map((comment, i) =>
+      commentsModerationResults[i].blocklistsMatch.length > 0 ? 'REDACTED' : comment
+    );
   }
 
   return thread;
