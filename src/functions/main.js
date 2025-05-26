@@ -8,7 +8,7 @@ const sdk = require("microsoft-cognitiveservices-speech-sdk");
 
 const { extractiveSummarization, abstractiveSummarization } = require('./summarizer');
 
-const {moderateThread} = require('./moderator');
+const { moderateThread } = require('./moderator');
 
 // --- Azure Cognitive Services setup ---
 const speechKey = process.env.AZURE_SPEECH_KEY;
@@ -129,7 +129,7 @@ async function generateSsmlEpisode(threads, context) {
 
   // Summary
   const documents = threads.map(thread => `${thread.title} ${thread.comments.join(' ')}`);
-  
+
   const summary = await extractiveSummarization(documents, context);
   ssmlChunks.push(wrapSsmlBlock(`
     <voice name="${hostVoice}">
@@ -284,6 +284,48 @@ async function saveEpisodeMetadata(metadata) {
   await tableClient.upsertEntity(entity);
 }
 
+async function generateRssFeed() {
+  const tableClient = new TableClient(
+    `https://${process.env.AZURE_STORAGE_ACCOUNT}.table.core.windows.net`,
+    "PodcastEpisodes",
+    new AzureNamedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, process.env.AZURE_STORAGE_ACCOUNT_KEY)
+  );
+
+  const episodes = [];
+  for await (const entity of tableClient.listEntities({ queryOptions: { filter: `PartitionKey eq 'episodes'` } })) {
+    episodes.push(entity);
+  }
+
+  episodes.sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
+
+  const itemsXml = episodes.map(ep => `
+    <item>
+      <title>Top Reddit Threads for ${ep.rowKey}</title>
+      <itunes:summary><![CDATA[${ep.summary}]]></itunes:summary>
+      <description><![CDATA[${ep.summary}]]></description>
+      <pubDate>${new Date(ep.createdOn).toUTCString()}</pubDate>
+      <guid isPermaLink="false">${ep.rowKey}</guid>
+      <enclosure url="${ep.audioUrl}" type="audio/x-wav" />
+    </item>`).join('\n');
+
+  const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Reddit Top Threads</title>
+    <link>https://yourdomain.com</link>
+    <description>Daily AI-narrated podcast of top Reddit threads.</description>
+    <language>en-us</language>
+    <itunes:author>Reddit2Podcast AI</itunes:author>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:image href="https://yourcdn.com/logo.png" />
+    <itunes:category text="Technology" />
+    ${itemsXml}
+  </channel>
+</rss>`;
+
+  await uploadBufferToBlob(Buffer.from(rssXml, 'utf-8'), 'rss/feed.xml', 'application/rss+xml');
+}
 
 async function reddit2podcast(context) {
   try {
@@ -308,8 +350,9 @@ async function reddit2podcast(context) {
       ssmlUrl,
       summary
     });
+    await generateRssFeed();
 
-    context.log(`Episode metadata saved. Audio URL: ${audioUrl}`);
+    context.log(`Episode metadata saved and RSS feed generated.. Audio URL: ${audioUrl}`);
   } catch (err) {
     context.log('Error generating podcast:', err);
   }
