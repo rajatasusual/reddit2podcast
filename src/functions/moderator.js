@@ -1,23 +1,28 @@
 const { app } = require('@azure/functions');
+const ContentSafetyClient = require("@azure-rest/ai-content-safety").default,
+  { isUnexpected } = require("@azure-rest/ai-content-safety");
+const { AzureKeyCredential } = require("@azure/core-auth");
+
 require("dotenv").config();
 
-async function moderateContent(contentInfo, context) {
+async function moderateContent(text, context) {
   try {
-    const response = await fetch(process.env.CONTENT_SAFETY_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Ocp-Apim-Subscription-Key': process.env.CONTENT_SAFETY_KEY
-      },
-      body: JSON.stringify(contentInfo)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Error calling content safety service: ${response.status} ${response.statusText}. ${error.message}`);
+    const endpoint = process.env["CONTENT_SAFETY_ENDPOINT"];
+    const key = process.env["CONTENT_SAFETY_KEY"];
+    
+    const credential = new AzureKeyCredential(key);
+    const client = ContentSafetyClient(endpoint, credential);
+    
+    const analyzeTextOption = { text };
+    const analyzeTextParameters = { body: analyzeTextOption };
+    
+    const result = await client.path("/text:analyze").post(analyzeTextParameters);
+    
+    if (isUnexpected(result)) {
+        throw result;
     }
-
-    return await response.json();
+    
+    return result.body;
 
   } catch (err) {
     context.log(`💥 Error moderating content: ${err.message}`);
@@ -26,18 +31,18 @@ async function moderateContent(contentInfo, context) {
 }
 
 async function moderateThread(thread, context) {
-  const titleModerationResult = await moderateContentWithRetry({ text: thread.title, haltOnBlocklistHit: false }, context);
-  const commentsModerationResults = await Promise.all(thread.comments.map(comment => moderateContentWithRetry({ text: comment, haltOnBlocklistHit: false }, context)));
+  const titleModerationResult = await moderateContentWithRetry(thread.title, context);
+  const commentsModerationResults = await Promise.all(thread.comments.map(comment => moderateContentWithRetry(comment, context)));
 
-  async function moderateContentWithRetry(contentInfo, context, retryCount = 0) {
+  async function moderateContentWithRetry(content, context, retryCount = 0) {
     try {
-      return await moderateContent(contentInfo, context);
+      return await moderateContent(content, context);
     } catch (error) {
       if (error.message.includes('429') && retryCount < 5) {
         const delay = 5000 * (retryCount + 1);
         context.log(`Rate limited. Waiting ${delay / 1000} seconds before retrying.`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        return await moderateContentWithRetry(contentInfo, context, retryCount + 1);
+        return await moderateContentWithRetry(content, context, retryCount + 1);
       } else {
         throw error;
       }
@@ -59,8 +64,8 @@ app.http('moderate', {
   authLevel: 'authenticated',
   route: 'moderate',
   handler: async (request, context) => {
-    const contentInfo = request.params;
-    if (!contentInfo || typeof contentInfo !== 'object') {
+    const content = request.params;
+    if (typeof content !== 'string') {
       context.log('Invalid user info in request body.');
       return {
         status: 400,
@@ -68,10 +73,10 @@ app.http('moderate', {
       };
     }
 
-    context.log(`👤 Content info: ${JSON.stringify(contentInfo)}`);
+    context.log(`👤 Content: content`);
 
     try {
-      const moderationResults = await moderateContent(contentInfo, context);
+      const moderationResults = await moderateContent(content, context);
       return {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
