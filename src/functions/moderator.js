@@ -3,6 +3,8 @@ const ContentSafetyClient = require("@azure-rest/ai-content-safety").default,
   { isUnexpected } = require("@azure-rest/ai-content-safety");
 const { AzureKeyCredential } = require("@azure/core-auth");
 
+const {default: pRetry, AbortError} = require('p-retry');
+
 require("dotenv").config();
 
 async function moderateContent(text, context) {
@@ -31,23 +33,24 @@ async function moderateContent(text, context) {
 }
 
 async function moderateThread(thread, context) {
-  const titleModerationResult = await moderateContentWithRetry(thread.title, context);
-  const commentsModerationResults = await Promise.all(thread.comments.map(comment => moderateContentWithRetry(comment, context)));
-
-  async function moderateContentWithRetry(content, context, retryCount = 0) {
-    try {
-      return await moderateContent(content, context);
-    } catch (error) {
-      if (error.message.includes('429') && retryCount < 5) {
-        const delay = 5000 * (retryCount + 1);
-        context.log(`Rate limited. Waiting ${delay / 1000} seconds before retrying.`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return await moderateContentWithRetry(content, context, retryCount + 1);
-      } else {
-        throw error;
+  const retryOptions = {
+    onFailedAttempt: error => {
+      if (error.message.includes('429')) {
+        context.log(`Rate limited. Attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`);
       }
-    }
-  }
+      else {
+        context.log(`Error moderating content: ${error.message}`);
+        throw new AbortError(error.message);
+      }
+    },
+    retries: 5,
+  };
+
+  const titleModerationResult = await pRetry(() => moderateContent(thread.title, context), retryOptions);
+
+  const commentsModerationResults = await Promise.all(thread.comments.map(comment =>
+    pRetry(() => moderateContent(comment, context), retryOptions)
+  ));
 
   if (titleModerationResult.blocklistsMatch.length > 0) {
     thread.title = 'REDACTED';
