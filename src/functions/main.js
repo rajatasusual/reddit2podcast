@@ -6,7 +6,7 @@ const removeMd = require('remove-markdown');
 const snoowrap = require('snoowrap');
 const sdk = require("microsoft-cognitiveservices-speech-sdk");
 
-const { extractiveSummarization } = require('./summarizer');
+const { extractiveSummarization, abstractiveSummarization } = require('./summarizer');
 
 // --- Azure Cognitive Services setup ---
 const speechKey = process.env.AZURE_SPEECH_KEY;
@@ -32,125 +32,160 @@ function escapeXml(text) {
   })[c]);
 }
 
+function wrapSsmlBlock(content) {
+  return `
+    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
+      xmlns:mstts="http://www.w3.org/2001/mstts"
+      xml:lang="en-US">${content}</speak>`;
+}
+function mergeWavBuffers(buffers) {
+  const HEADER_SIZE = 44;
+
+  const firstHeader = buffers[0].slice(0, HEADER_SIZE);
+  const audioDataBuffers = buffers.map(buf => buf.slice(HEADER_SIZE));
+  const totalAudioDataLength = audioDataBuffers.reduce((sum, b) => sum + b.length, 0);
+
+  const mergedBuffer = Buffer.alloc(HEADER_SIZE + totalAudioDataLength);
+  firstHeader.copy(mergedBuffer, 0);
+
+  // Write correct file size and data length in header
+  mergedBuffer.writeUInt32LE(36 + totalAudioDataLength, 4);  // File size = 36 + data
+  mergedBuffer.writeUInt32LE(totalAudioDataLength, 40);      // Subchunk2Size
+
+  let offset = HEADER_SIZE;
+  for (const audioBuf of audioDataBuffers) {
+    audioBuf.copy(mergedBuffer, offset);
+    offset += audioBuf.length;
+  }
+
+  return mergedBuffer;
+}
+
+function combineSsmlChunks(ssmlChunks) {
+  const stripSpeakTags = (ssml) => {
+    return ssml
+      .replace(/^<speak[^>]*>/, '')   // Remove opening <speak ...>
+      .replace(/<\/speak>$/, '');     // Remove closing </speak>
+  };
+
+  const combinedContent = ssmlChunks.map(stripSpeakTags).join('\n');
+
+  const finalSsml = `<?xml version="1.0" encoding="utf-8"?>
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+${combinedContent}
+</speak>`;
+
+  return finalSsml;
+}
+
 // Synthesize speech from SSML
-async function synthesizeSpeechSsml(ssml) {
-  return new Promise((resolve, reject) => {
-    const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
-    synthesizer.speakSsmlAsync(
-      ssml,
-      result => {
-        if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-          resolve(Buffer.from(result.audioData));
-        } else {
-          reject(new Error('Speech synthesis failed'));
-        }
-        synthesizer.close();
-      },
-      error => {
-        synthesizer.close();
-        reject(error);
-      }
-    );
-  });
+async function synthesizeSsmlChunks(ssmlChunks, context) {
+  const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
+
+  const buffers = [];
+
+  for (let i = 0; i < ssmlChunks.length; i++) {
+    const ssml = ssmlChunks[i];
+    context.log(`🔊 Synthesizing chunk ${i + 1}/${ssmlChunks.length}...`);
+
+    const buffer = await new Promise((resolve, reject) => {
+      synthesizer.speakSsmlAsync(
+        ssml,
+        result => {
+          if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+            resolve(Buffer.from(result.audioData));
+          } else {
+            reject(new Error(`Synthesis failed for chunk ${i + 1}`));
+          }
+        },
+        error => reject(error)
+      );
+    });
+
+    buffers.push(buffer);
+  }
+
+  synthesizer.close();
+
+  return mergeWavBuffers(buffers);
 }
 
 async function generateSsmlEpisode(threads, context) {
   const hostVoice = "en-US-GuyNeural";
   const commenterVoice = "en-US-JennyNeural";
 
-  context.log(`Generating SSML for ${threads.length} threads`);
+  const ssmlChunks = [];
 
-  let ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
-    xmlns:mstts="http://www.w3.org/2001/mstts"
-    xml:lang="en-US">`;
-
-  // Episode Intro with expressive style
-  ssml += `
+  // Intro
+  ssmlChunks.push(wrapSsmlBlock(`
     <voice name="${hostVoice}">
       <mstts:express-as style="cheerful">
-        <prosody rate="medium">
-          <s>Welcome to today's episode of Reddit Top Threads.</s>
-          <s>Let's dive in!<break time="800ms"/></s>
-        </prosody>
+        <s>Welcome to today's episode of Reddit Top Threads.</s>
+        <s>Let's dive in!</s>
       </mstts:express-as>
-    </voice>
-  `;
+    </voice>`));
 
-  // Summarize the documents
+  // Summary
   const documents = threads.map(thread => `${thread.title} ${thread.comments.join(' ')}`);
-  context.log("Summarizing documents...");
   const summary = await extractiveSummarization(documents, context);
-  context.log("Summarization complete.");
-
-  ssml += `
+  ssmlChunks.push(wrapSsmlBlock(`
     <voice name="${hostVoice}">
       <mstts:express-as style="narration-professional">
-        <prosody rate="medium">
-          <s>${escapeXml(summary)}</s>
-        </prosody>
+        <s>${escapeXml(summary)}</s>
       </mstts:express-as>
-    </voice>
-  `;
+    </voice>`));
 
-  // Main body - iterate threads
-  threads.forEach((thread, idx) => {
-    context.log(`Synthesizing SSML for thread: ${thread.title}`);
+  // Threads
+  for (let idx = 0; idx < threads.length; idx++) {
+    const thread = threads[idx];
+    const threadSsmlParts = [];
 
-    // Host introduces the thread
-    ssml += `
+    threadSsmlParts.push(`
       <voice name="${hostVoice}">
         <mstts:express-as style="newscast-casual">
+          <s>Thread ${idx + 1}: ${escapeXml(thread.title)}</s>
+        </mstts:express-as>
+      </voice>`);
+
+    // Summarize thread content
+    const threadContent = `Excerpt fromReddit thread titled: ${thread.title} ${thread.content} ${thread.comments.join('.')}`;
+    context.log("Summarizing thread content...");
+    const threadSummary = await abstractiveSummarization([threadContent], context);
+    context.log("Thread summarization complete.");
+
+    // Add summarized content to SSML
+    threadSsmlParts.push(`
+      <voice name="${hostVoice}">
+        <mstts:express-as style="narration-professional">
           <prosody rate="medium">
-            <s>Thread ${idx + 1}: ${escapeXml(thread.title)}<break time="400ms"/></s>
+            <s>${escapeXml(threadSummary)}<break time="300ms"/></s>
           </prosody>
         </mstts:express-as>
       </voice>
-    `;
+    `);
 
-    // Comments
     thread.comments.forEach((comment, i) => {
-      ssml += `
+      threadSsmlParts.push(`
         <voice name="${commenterVoice}">
           <mstts:express-as style="friendly">
-            <prosody rate="medium">
-              <s>Commenter ${i + 1} says: ${escapeXml(comment)}</s>
-              <break time="600ms"/>
-            </prosody>
+            <s>Commenter ${i + 1} says: ${escapeXml(comment)}</s>
           </mstts:express-as>
-        </voice>
-      `;
+        </voice>`);
     });
 
-    // Transition to next thread
-    if (idx < threads.length - 1) {
-      ssml += `
-        <voice name="${hostVoice}">
-          <mstts:express-as style="cheerful">
-            <prosody rate="medium">
-              <s>And now, moving on to the next hot topic.</s>
-              <break time="1s"/>
-            </prosody>
-          </mstts:express-as>
-        </voice>
-      `;
-    }
-  });
+    ssmlChunks.push(wrapSsmlBlock(threadSsmlParts.join('\n')));
+  }
 
   // Outro
-  ssml += `
+  ssmlChunks.push(wrapSsmlBlock(`
     <voice name="${hostVoice}">
       <mstts:express-as style="cheerful">
-        <prosody rate="medium">
-          <s>That wraps up our episode.</s>
-          <s>Thanks for listening!<break time="1s"/></s>
-        </prosody>
+        <s>That wraps up our episode.</s>
+        <s>Thanks for listening!</s>
       </mstts:express-as>
-    </voice>
-  `;
+    </voice>`));
 
-  ssml += `</speak>`;
-
-  return { ssml, summary };
+  return { ssmlChunks, summary };
 }
 
 async function uploadBufferToBlob(buffer, filename, contentType = "application/octet-stream") {
@@ -247,11 +282,11 @@ async function reddit2podcast(context) {
     const episodeId = new Date().toISOString().split('T')[0];
 
     const threads = await getTopThreads(subreddit);
-    const { ssml, summary } = await generateSsmlEpisode(threads, context);
-    const audioBuffer = await synthesizeSpeechSsml(ssml);
+    const { ssmlChunks, summary } = await generateSsmlEpisode(threads, context);
+    const audioBuffer = await synthesizeSsmlChunks(ssmlChunks, context);
 
     const jsonUrl = await uploadJsonToBlobStorage(threads, `json/episode-${episodeId}.threads.json`);
-    const ssmlUrl = await uploadXmlToBlobStorage(ssml, `xml/episode-${episodeId}.ssml.xml`);
+    const ssmlUrl = await uploadXmlToBlobStorage(combineSsmlChunks(ssmlChunks), `xml/episode-${episodeId}.ssml.xml`);
     const audioUrl = await uploadAudioToBlobStorage(audioBuffer, `audio/episode-${episodeId}.wav`);
 
     await saveEpisodeMetadata({
