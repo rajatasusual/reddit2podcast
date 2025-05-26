@@ -29,6 +29,30 @@ app.http('extractiveSummarization', {
   }
 });
 
+app.http('abstractiveSummarization', {
+  methods: ['POST'],
+  authLevel: 'function',
+  handler: async (request, context) => {
+    context.log("== Abstractive Summarization Sample ==");
+
+    const documents = request.body.documents;
+
+    try {
+      const results = await performSummarization(documents, 'Abstractive', context);
+      context.res = {
+        status: 200,
+        body: results
+      };
+    } catch (err) {
+      context.log(err);
+      context.res = {
+        status: 500,
+        body: err
+      };
+    }
+  }
+});
+
 async function performSummarization(documents, type, context) {
   const client = new TextAnalysisClient(endpoint, new AzureKeyCredential(apiKey));
   const actions = [

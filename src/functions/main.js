@@ -8,6 +8,8 @@ const sdk = require("microsoft-cognitiveservices-speech-sdk");
 
 const { extractiveSummarization, abstractiveSummarization } = require('./summarizer');
 
+const {moderateThread} = require('./moderator');
+
 // --- Azure Cognitive Services setup ---
 const speechKey = process.env.AZURE_SPEECH_KEY;
 const speechRegion = process.env.AZURE_SPEECH_REGION;
@@ -127,6 +129,7 @@ async function generateSsmlEpisode(threads, context) {
 
   // Summary
   const documents = threads.map(thread => `${thread.title} ${thread.comments.join(' ')}`);
+  
   const summary = await extractiveSummarization(documents, context);
   ssmlChunks.push(wrapSsmlBlock(`
     <voice name="${hostVoice}">
@@ -213,6 +216,14 @@ async function uploadAudioToBlobStorage(buffer, filename) {
   return await uploadBufferToBlob(buffer, filename, 'audio/x-wav');
 }
 
+async function moderateThreads(threads, context) {
+  const cleanedThreads = await Promise.all(
+    threads.map(thread => moderateThread(thread, context))
+  );
+
+  return cleanedThreads;
+}
+
 async function getTopThreads(subreddit) {
   const r = new snoowrap({
     userAgent: 'RedditToPodcast v1.0',
@@ -248,8 +259,6 @@ async function getTopThreads(subreddit) {
   return threads;
 }
 
-
-
 async function saveEpisodeMetadata(metadata) {
 
   const tableName = "PodcastEpisodes";
@@ -282,10 +291,12 @@ async function reddit2podcast(context) {
     const episodeId = new Date().toISOString().split('T')[0];
 
     const threads = await getTopThreads(subreddit);
-    const { ssmlChunks, summary } = await generateSsmlEpisode(threads, context);
+    const cleanThreads = await moderateThreads(threads, context);
+
+    const { ssmlChunks, summary } = await generateSsmlEpisode(cleanThreads, context);
     const audioBuffer = await synthesizeSsmlChunks(ssmlChunks, context);
 
-    const jsonUrl = await uploadJsonToBlobStorage(threads, `json/episode-${episodeId}.threads.json`);
+    const jsonUrl = await uploadJsonToBlobStorage(cleanThreads, `json/episode-${episodeId}.threads.json`);
     const ssmlUrl = await uploadXmlToBlobStorage(combineSsmlChunks(ssmlChunks), `xml/episode-${episodeId}.ssml.xml`);
     const audioUrl = await uploadAudioToBlobStorage(audioBuffer, `audio/episode-${episodeId}.wav`);
 
