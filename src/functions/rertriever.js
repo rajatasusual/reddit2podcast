@@ -20,38 +20,42 @@ async function createOrRetrieveSASToken(userInfo) {
   });
 
   const entity = await tableClient.getEntity("users", userInfo.userId).catch(() => null);
-  if (entity) {
-    console.log('SAS token retrieved from existing entity.');
-    return entity.sasToken;
-  } else {
-    const sharedKeyCredential = new StorageSharedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, process.env.AZURE_STORAGE_ACCOUNT_KEY);
-    const sasOptions = {
-      containerName: `${process.env.AZURE_STORAGE_ACCOUNT}-audio`,
-      permissions: ContainerSASPermissions.parse("r")
-    };
-
-    sasOptions.startsOn = new Date();
-    sasOptions.expiresOn = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
-    console.log(`SAS token for blob container is: ${sasToken}`);
-
-    await tableClient.upsertEntity({
-      partitionKey: "users",
-      createdOn: new Date().toISOString(),
-      sasToken,
-      rowKey: userInfo.userId,
-      identityProvider: userInfo.identityProvider,
-      userId: userInfo.userId,
-      userDetails: userInfo.userDetails
-    }).catch(err => {
-      console.error(`Error upserting entity: ${err.message}`);
-      throw new Error('Failed to save SAS token.');
-    });
-
-    console.log('SAS token generated and saved.');
-    return sasToken;
+  if (entity && entity.sasToken) {
+    const expiryDate = new Date(entity.createdOn);
+    expiryDate.setHours(expiryDate.getHours() + 24);
+    if (expiryDate > new Date()) {
+      console.log('SAS token retrieved from existing entity.');
+      return entity.sasToken;
+    }
   }
+
+  const sharedKeyCredential = new StorageSharedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, process.env.AZURE_STORAGE_ACCOUNT_KEY);
+  const sasOptions = {
+    containerName: `${process.env.AZURE_STORAGE_ACCOUNT}-audio`,
+    permissions: ContainerSASPermissions.parse("r")
+  };
+
+  sasOptions.startsOn = new Date();
+  sasOptions.expiresOn = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
+  console.log(`SAS token for blob container is: ${sasToken}`);
+
+  await tableClient.upsertEntity({
+    partitionKey: "users",
+    createdOn: new Date().toISOString(),
+    sasToken,
+    rowKey: userInfo.userId,
+    identityProvider: userInfo.identityProvider,
+    userId: userInfo.userId,
+    userDetails: userInfo.userDetails
+  }).catch(err => {
+    console.error(`Error upserting entity: ${err.message}`);
+    throw new Error('Failed to save SAS token.');
+  });
+
+  console.log('SAS token generated and saved.');
+  return sasToken;
 }
 
 app.http('episodes', {
