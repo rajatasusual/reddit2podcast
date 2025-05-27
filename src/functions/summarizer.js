@@ -9,7 +9,6 @@ app.http('extractiveSummarization', {
   methods: ['POST'],
   authLevel: 'function',
   handler: async (request, context) => {
-    context.log("== Extractive Summarization Sample ==");
 
     const documents = request.body.documents;
 
@@ -33,8 +32,6 @@ app.http('abstractiveSummarization', {
   methods: ['POST'],
   authLevel: 'function',
   handler: async (request, context) => {
-    context.log("== Abstractive Summarization Sample ==");
-
     const documents = request.body.documents;
 
     try {
@@ -84,16 +81,13 @@ async function performSummarization(documents, type, context) {
         throw new Error(`Unexpected error (${code}): ${message}`);
       }
       for (const result of actionResult.results) {
-        context.log(`- Document ${result.id}`);
         if (result.error) {
           const { code, message } = result.error;
           throw new Error(`Unexpected error (${code}): ${message}`);
         }
-        context.log("Summary:");
         const resultText = type === 'Extractive' 
           ? result.sentences.map((sentence) => sentence.text).join(".\n")
           : result.summaries.map((summary) => summary.text).join(".\n");
-        context.log(resultText);
         summary += resultText;
       }
     }

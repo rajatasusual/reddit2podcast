@@ -72,8 +72,6 @@ app.http('episodes', {
       };
     }
 
-    context.log(`👤 User info: ${JSON.stringify(userInfo)}`);
-
     try {
       const sasToken = await createOrRetrieveSASToken(userInfo);
 

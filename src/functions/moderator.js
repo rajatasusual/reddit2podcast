@@ -54,10 +54,8 @@ async function moderateThread(thread, context) {
 
   if (titleModerationResult.blocklistsMatch.length > 0) {
     thread.title = 'REDACTED';
-    context.log(`🔍 Redacted title: ${thread.title}`);
   }
   if (commentsModerationResults.some(result => result.blocklistsMatch.length > 0)) {
-    context.log(`🔍 Redacting Comments`);
     thread.comments = thread.comments.map((comment, i) =>
       commentsModerationResults[i].blocklistsMatch.length > 0 ? 'REDACTED' : comment
     );
@@ -79,8 +77,6 @@ app.http('moderate', {
         body: 'Bad Request'
       };
     }
-
-    context.log(`👤 Content: content`);
 
     try {
       const moderationResults = await moderateContent(content, context);
