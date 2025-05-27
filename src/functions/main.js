@@ -19,7 +19,8 @@ speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff1
 
 // --- Blob Storage setup ---
 const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
-const containerClient = blobServiceClient.getContainerClient(`${process.env.AZURE_STORAGE_ACCOUNT}-audio`);
+const privateContainerClient = blobServiceClient.getContainerClient(`${process.env.AZURE_STORAGE_ACCOUNT}-audio`);
+const publicContainerClient = blobServiceClient.getContainerClient(`${process.env.AZURE_STORAGE_ACCOUNT}-public`);
 
 // --- Helpers ---
 
@@ -191,9 +192,20 @@ async function generateSsmlEpisode(threads, context) {
   return { ssmlChunks, summary };
 }
 
-async function uploadBufferToBlob(buffer, filename, contentType = "application/octet-stream") {
-  await containerClient.createIfNotExists();
-  const blockBlobClient = containerClient.getBlockBlobClient(filename);
+async function uploadBufferToPrivateBlob(buffer, filename, contentType = "application/octet-stream") {
+  await privateContainerClient.createIfNotExists();
+  const blockBlobClient = privateContainerClient.getBlockBlobClient(filename);
+  await blockBlobClient.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: contentType }
+  });
+  return blockBlobClient.url;
+}
+
+async function uploadBufferToPublicBlob(buffer, filename, contentType = "application/octet-stream") {
+  await publicContainerClient.createIfNotExists(
+    { access: "blob"}
+  );
+  const blockBlobClient = publicContainerClient.getBlockBlobClient(filename);
   await blockBlobClient.uploadData(buffer, {
     blobHTTPHeaders: { blobContentType: contentType }
   });
@@ -202,18 +214,18 @@ async function uploadBufferToBlob(buffer, filename, contentType = "application/o
 
 async function uploadXmlToBlobStorage(xmlString, filename) {
   const buffer = Buffer.from(xmlString, 'utf-8');
-  return await uploadBufferToBlob(buffer, filename, 'application/xml');
+  return await uploadBufferToPrivateBlob(buffer, filename, 'application/xml');
 }
 
 async function uploadJsonToBlobStorage(threads, filename) {
   const jsonString = JSON.stringify(threads, null, 2);
   const buffer = Buffer.from(jsonString, 'utf-8');
-  return await uploadBufferToBlob(buffer, filename, 'application/json');
+  return await uploadBufferToPrivateBlob(buffer, filename, 'application/json');
 }
 
 
 async function uploadAudioToBlobStorage(buffer, filename) {
-  return await uploadBufferToBlob(buffer, filename, 'audio/x-wav');
+  return await uploadBufferToPrivateBlob(buffer, filename, 'audio/x-wav');
 }
 
 async function moderateThreads(threads, context) {
@@ -324,7 +336,7 @@ async function generateRssFeed() {
   </channel>
 </rss>`;
 
-  await uploadBufferToBlob(Buffer.from(rssXml, 'utf-8'), 'rss/feed.xml', 'application/rss+xml');
+  await uploadBufferToPublicBlob(Buffer.from(rssXml, 'utf-8'), 'rss/feed.xml', 'application/rss+xml');
 }
 
 async function reddit2podcast(context) {
