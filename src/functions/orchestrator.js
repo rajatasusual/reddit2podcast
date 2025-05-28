@@ -6,28 +6,18 @@ df.app.orchestration('orchestrator', function* (context) {
   const episodeId = context.df.currentUtcDateTime.toISOString().split('T')[0];
 
   // 1. Get top threads from subreddit
-  const threads = yield context.df.callActivity("getTopThreads", subreddit);
+  const threads = yield context.df.callActivity("getTopThreads", {subreddit});
 
   // 2. Moderate threads
-  const cleanThreads = yield context.df.callActivity("moderateThreads", threads);
+  const {cleanThreads, jsonUrl} = yield context.df.callActivity("moderateThreads", {threads, episodeId});
 
   // 3. Generate SSML
-  const { ssmlChunks, summary } = yield context.df.callActivity("generateSSMLEpisode", cleanThreads);
+  const { ssmlChunks, summary, ssmlUrl } = yield context.df.callActivity("generateSSMLEpisode", { threads: cleanThreads, episodeId });
 
   // 4. Synthesize audio
-  const audioBase64 = yield context.df.callActivity("synthesizeSSMLChunks", ssmlChunks);
+  const audioUrl = yield context.df.callActivity("synthesizeSSMLChunks", {ssmlChunks, episodeId});
 
-  const binaryString = atob(audioBase64);
-  let audioBuffer = new Uint8Array(binaryString.length);
-    for (var i = 0; i < binaryString.length; i++) {
-        audioBuffer[i] = binaryString.charCodeAt(i);
-    }
-  
-  // 5. Upload JSON, SSML, and Audio
-  const artifactPayload = { cleanThreads, episodeId, ssmlChunks, audioBuffer };
-  const { jsonUrl, ssmlUrl, audioUrl } = yield context.df.callActivity("uploadArtifact", artifactPayload);
-
-  // 6. Save metadata
+  // 5. Save metadata
   const metadata = {
     episodeId,
     subreddit,
@@ -38,7 +28,7 @@ df.app.orchestration('orchestrator', function* (context) {
   };
   yield context.df.callActivity("saveEpisodeMetadata", metadata);
 
-  // 7. Generate RSS feed
+  // 6. Generate RSS feed
   yield context.df.callActivity("generateRSSFeed");
 
   return {

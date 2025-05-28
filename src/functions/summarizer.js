@@ -60,14 +60,6 @@ async function performSummarization(documents, type, context) {
   ];
   const poller = await client.beginAnalyzeBatch(actions, documents, "en");
 
-  poller.onProgress(() => {
-    context.log(
-      `Last time the operation was updated was on: ${poller.getOperationState().modifiedOn}`
-    );
-  });
-  context.log(`The operation was created on ${poller.getOperationState().createdOn}`);
-  context.log(`The operation results will expire on ${poller.getOperationState().expiresOn}`);
-
   try {
     const results = await poller.pollUntilDone();
 
@@ -91,8 +83,6 @@ async function performSummarization(documents, type, context) {
         summary += resultText;
       }
     }
-
-    context.log(`Operation completed on ${poller.getOperationState().modifiedOn}`);
 
     return summary;
   } catch (err) {

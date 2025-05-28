@@ -1,4 +1,5 @@
 const sdk = require("microsoft-cognitiveservices-speech-sdk");
+const { uploadAudioToBlobStorage } = require("../shared/storageUtil");
 
 const speechConfig = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
 speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm; // WAV PCM
@@ -26,7 +27,7 @@ function mergeWavBuffers(buffers) {
   return mergedBuffer;
 }
 
-module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(ssmlChunks, context) {
+module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input, context) {
   const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
 
   const synthesizeChunk = async (ssml, index) => {
@@ -34,7 +35,7 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(ssmlCh
       synthesizer.speakSsmlAsync(
         ssml,
         result => {
-          context.log(`🔊 Synthesized chunk ${index + 1}/${ssmlChunks.length}...`);
+          context.log(`🔊 Synthesized chunk ${index + 1}/${input.ssmlChunks.length}...`);
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
             resolve({ index, buffer: Buffer.from(result.audioData) });
           } else {
@@ -47,7 +48,7 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(ssmlCh
     });
   };
 
-  const results = await Promise.all(ssmlChunks.map((ssml, i) => synthesizeChunk(ssml, i)));
+  const results = await Promise.all(input.ssmlChunks.map((ssml, i) => synthesizeChunk(ssml, i)));
 
   synthesizer.close();
 
@@ -56,5 +57,6 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(ssmlCh
 
   context.log(`🔊 Synthesis complete. Merging chunks...`);
 
-  return mergeWavBuffers(buffers);
+  const audioUrl = await uploadAudioToBlobStorage(mergeWavBuffers(buffers), `audio/episode-${input.episodeId}.wav`);
+  return audioUrl;
 }

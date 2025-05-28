@@ -1,7 +1,7 @@
 const removeMd = require('remove-markdown');
 const snoowrap = require('snoowrap');
 
-module.exports.getTopThreads = async function getTopThreads(subreddit, context) {
+module.exports.getTopThreads = async function getTopThreads(input, context) {
   const r = new snoowrap({
     userAgent: 'RedditToPodcast v1.0',
     clientId: process.env.REDDIT_CLIENT_ID,
@@ -10,9 +10,9 @@ module.exports.getTopThreads = async function getTopThreads(subreddit, context) 
     password: process.env.REDDIT_PASSWORD
   });
 
-  context.log(`Fetching top threads from ${subreddit}`);
+  context.log(`Fetching top threads from ${input.subreddit}`);
 
-  const posts = await r.getSubreddit(subreddit).getTop({ time: 'day', limit: 5 });
+  const posts = await r.getSubreddit(input.subreddit).getTop({ time: 'day', limit: 5 });
 
   const threads = await Promise.all(posts.map(async (post) => {
     const fullPost = await r.getSubmission(post.id).expandReplies({ limit: 3, depth: 1 });
@@ -31,7 +31,7 @@ module.exports.getTopThreads = async function getTopThreads(subreddit, context) 
     };
   }));
 
-  context.log(`Fetched ${threads.length} threads from ${subreddit}`);
+  context.log(`Fetched ${threads.length} threads from ${input.subreddit}`);
 
   return threads;
 }

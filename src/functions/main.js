@@ -5,7 +5,6 @@ const {
   moderateThreads,
   generateSSMLEpisode,
   synthesizeSSMLChunks,
-  uploadArtifact,
   saveEpisodeMetadata,
   generateRSSFeed
 } = require('./activities')
@@ -15,13 +14,11 @@ async function reddit2podcast(context) {
     const subreddit = 'technology';
     const episodeId = new Date().toISOString().split('T')[0];
 
-    const threads = await getTopThreads(subreddit, context);
-    const cleanThreads = await moderateThreads(threads, context);
+    const threads = await getTopThreads({ subreddit }, context);
+    const { cleanThreads, jsonUrl } = await moderateThreads({ threads, episodeId }, context);
 
-    const { ssmlChunks, summary } = await generateSSMLEpisode(cleanThreads, context);
-    const audioBuffer = await synthesizeSSMLChunks(ssmlChunks, context);
-
-    const { jsonUrl, ssmlUrl, audioUrl } = await uploadArtifact({ cleanThreads, episodeId, ssmlChunks, audioBuffer }, context);
+    const { ssmlChunks, summary, ssmlUrl } = await generateSSMLEpisode({ threads: cleanThreads, episodeId }, context);
+    const audioUrl = await synthesizeSSMLChunks({ ssmlChunks, episodeId }, context);
 
     await saveEpisodeMetadata({
       episodeId,

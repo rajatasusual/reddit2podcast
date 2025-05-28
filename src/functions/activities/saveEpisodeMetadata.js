@@ -1,7 +1,7 @@
 
 const { TableClient, AzureNamedKeyCredential } = require('@azure/data-tables');
 
-module.exports.saveEpisodeMetadata = async function saveEpisodeMetadata(metadata, context) {
+module.exports.saveEpisodeMetadata = async function saveEpisodeMetadata(input, context) {
   
   context.log('Saving episode metadata...');
 
@@ -16,13 +16,13 @@ module.exports.saveEpisodeMetadata = async function saveEpisodeMetadata(metadata
 
   const entity = {
     partitionKey: "episodes",
-    rowKey: metadata.episodeId,
-    subreddit: metadata.subreddit,
-    audioUrl: metadata.audioUrl,
-    jsonUrl: metadata.jsonUrl,
-    ssmlUrl: metadata.ssmlUrl,
+    rowKey: input.episodeId,
+    subreddit: input.subreddit,
+    audioUrl: input.audioUrl,
+    jsonUrl: input.jsonUrl,
+    ssmlUrl: input.ssmlUrl,
     createdOn: new Date().toISOString(),
-    summary: metadata.summary
+    summary: input.summary
   };
 
   await tableClient.upsertEntity(entity);

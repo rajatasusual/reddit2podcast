@@ -1,4 +1,3 @@
-const { app } = require('@azure/functions');
 const df = require('durable-functions');
 
 const {
@@ -6,7 +5,6 @@ const {
   moderateThreads,
   generateSSMLEpisode,
   synthesizeSSMLChunks,
-  uploadArtifact,
   saveEpisodeMetadata,
   generateRSSFeed
 } = require('./activities')
@@ -32,12 +30,6 @@ df.app.activity('generateSSMLEpisode', {
 df.app.activity('synthesizeSSMLChunks', {
   handler: async (input, context) => {
     return await synthesizeSSMLChunks(input, context);
-  }
-});
-
-df.app.activity('uploadArtifact', {
-  handler: async (input, context) => {
-    return await uploadArtifact(input, context);
   }
 });
 
