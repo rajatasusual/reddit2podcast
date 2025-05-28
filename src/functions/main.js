@@ -39,14 +39,6 @@ async function reddit2podcast(context) {
   }
 }
 
-app.timer('scraper', {
-  schedule: '0 0 0 * * *',
-  handler: async (timer, context) => {
-    context.log('Timer function triggered: Starting Reddit podcast scrape.');
-    await reddit2podcast(context);
-  }
-});
-
 module.exports = {
   reddit2podcast
 };

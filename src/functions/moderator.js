@@ -66,7 +66,7 @@ async function moderateThread(thread, context) {
 
 app.http('moderate', {
   methods: ['POST'],
-  authLevel: 'authenticated',
+  authLevel: 'anonymous',
   route: 'moderate',
   handler: async (request, context) => {
     const content = request.params;
