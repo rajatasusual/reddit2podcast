@@ -36,8 +36,8 @@ function escapeXml(text) {
 }
 
 module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, context) {
-  const hostVoice = "en-US-GuyNeural";
-  const commenterVoice = "en-US-JennyNeural";
+  const hostVoice = "en-US-BrianNeural";
+  const commenterVoices = ["en-US-MichelleNeural", "en-US-JennyNeural", "en-US-AmberNeural"];
 
   const ssmlChunks = [];
 
@@ -59,7 +59,10 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
   ssmlChunks.push(wrapSsmlBlock(`
     <voice name="${hostVoice}">
       <mstts:express-as style="narration-professional">
-        <s>${escapeXml(summary)}</s>
+${(summary.match(/[^\.!\?]+[\.!\?]+/g) || []).map((sentence, idx) => {
+    return idx > 0 ? `<break time="300ms" />
+          <s>${escapeXml(sentence)}</s>` : `<s>${escapeXml(sentence)}</s>`;
+  }).join('')}
       </mstts:express-as>
     </voice>`));
 
@@ -71,7 +74,9 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
     threadSsmlParts.push(`
       <voice name="${hostVoice}">
         <mstts:express-as style="newscast-casual">
-          <s>Thread ${idx + 1}: ${escapeXml(thread.title)}</s>
+          <prosody rate="fast">
+            <s><emphasis level="moderate">Thread ${idx + 1}:</emphasis> ${escapeXml(thread.title)}</s>
+          </prosody>
         </mstts:express-as>
       </voice>`);
 
@@ -93,7 +98,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
 
     thread.comments.forEach((comment, i) => {
       threadSsmlParts.push(`
-        <voice name="${commenterVoice}">
+        <voice name="${commenterVoices[i % commenterVoices.length]}">
           <mstts:express-as style="friendly">
             <s>Commenter ${i + 1} says: ${escapeXml(comment)}</s>
           </mstts:express-as>
@@ -112,7 +117,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
       </mstts:express-as>
     </voice>`));
 
-    const ssmlUrl = await uploadXmlToBlobStorage(combineSsmlChunks(ssmlChunks), `xml/episode-${input.episodeId}.ssml.xml`);
+  const ssmlUrl = await uploadXmlToBlobStorage(combineSsmlChunks(ssmlChunks), `xml/episode-${input.episodeId}.ssml.xml`);
 
   return { ssmlChunks, summary, ssmlUrl };
 }
