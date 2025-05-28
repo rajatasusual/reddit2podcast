@@ -1,7 +1,8 @@
 // local-test.js
 require('dotenv').config();
 const context = {
-  log: console.log
+  log: console.log,
+  env: "TEST"
 };
 
 // Import the process function directly

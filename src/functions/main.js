@@ -1,36 +1,34 @@
-const { app } = require('@azure/functions');
-
 const {
   getTopThreads,
   moderateThreads,
   generateSSMLEpisode,
   synthesizeSSMLChunks,
-  saveEpisodeMetadata,
-  generateRSSFeed
 } = require('./activities')
+
+const fs = require('fs');
+const path = require('path');
+const mkdirp = require('mkdirp');
 
 async function reddit2podcast(context) {
   try {
     const subreddit = 'technology';
-    const episodeId = new Date().toISOString().split('T')[0];
+
+    const dataDir = path.join(__dirname, `../data`);
+    mkdirp.sync(dataDir);
 
     const threads = await getTopThreads({ subreddit }, context);
-    const { cleanThreads, jsonUrl } = await moderateThreads({ threads, episodeId }, context);
+    fs.writeFileSync(path.join(dataDir, 'threads.json'), JSON.stringify(threads, null, 2));
 
-    const { ssmlChunks, summary, ssmlUrl } = await generateSSMLEpisode({ threads: cleanThreads, episodeId }, context);
-    const audioUrl = await synthesizeSSMLChunks({ ssmlChunks, episodeId }, context);
+    const { cleanThreads } = await moderateThreads({ threads }, context);
+    fs.writeFileSync(path.join(dataDir, 'cleanThreads.json'), JSON.stringify(cleanThreads, null, 2));
 
-    await saveEpisodeMetadata({
-      episodeId,
-      subreddit,
-      audioUrl,
-      jsonUrl,
-      ssmlUrl,
-      summary
-    }, context);
-    await generateRSSFeed();
+    const { ssmlChunks } = await generateSSMLEpisode({ threads: cleanThreads }, context);
+    fs.writeFileSync(path.join(dataDir, 'ssml.xml'), ssmlChunks.join('\n'));
 
-    context.log(`Episode metadata saved and RSS feed generated.. Audio URL: ${audioUrl}`);
+    const audioBuffer = await synthesizeSSMLChunks({ ssmlChunks }, context);
+    fs.writeFileSync(path.join(dataDir, 'audio.mp3'), audioBuffer);
+    
+    context.log('Podcast generation complete.');
   } catch (err) {
     context.log('Error generating podcast:', err);
   }
@@ -39,3 +37,4 @@ async function reddit2podcast(context) {
 module.exports = {
   reddit2podcast
 };
+

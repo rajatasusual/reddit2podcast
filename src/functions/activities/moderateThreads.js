@@ -6,6 +6,8 @@ module.exports.moderateThreads = async function moderateThreads(input, context) 
     input.threads.map(thread => moderateThread(thread, context))
   );
 
+  if(context.env === 'TEST') return {cleanThreads, jsonUrl: ''};
+   
   const jsonUrl = await uploadJsonToBlobStorage(cleanThreads, `json/episode-${input.episodeId}.threads.json`);
 
   return {cleanThreads, jsonUrl};

@@ -57,6 +57,8 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
 
   context.log(`🔊 Synthesis complete. Merging chunks...`);
 
+  if(context.env === 'TEST') return mergeWavBuffers(buffers);
+
   const audioUrl = await uploadAudioToBlobStorage(mergeWavBuffers(buffers), `audio/episode-${input.episodeId}.wav`);
   return audioUrl;
 }

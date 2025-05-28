@@ -117,6 +117,8 @@ ${(summary.match(/[^\.!\?]+[\.!\?]+/g) || []).map((sentence, idx) => {
       </mstts:express-as>
     </voice>`));
 
+  if (context.env === 'TEST') return { ssmlChunks, summary, ssmlUrl: '' };
+
   const ssmlUrl = await uploadXmlToBlobStorage(combineSsmlChunks(ssmlChunks), `xml/episode-${input.episodeId}.ssml.xml`);
 
   return { ssmlChunks, summary, ssmlUrl };
