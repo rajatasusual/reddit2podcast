@@ -22,8 +22,9 @@ async function reddit2podcast(context) {
     const { cleanThreads } = await moderateThreads({ threads }, context);
     fs.writeFileSync(path.join(dataDir, 'cleanThreads.json'), JSON.stringify(cleanThreads, null, 2));
 
-    const { ssmlChunks } = await generateSSMLEpisode({ threads: cleanThreads }, context);
+    const { ssmlChunks, contentAnalysis } = await generateSSMLEpisode({ threads: cleanThreads }, context);
     fs.writeFileSync(path.join(dataDir, 'ssml.xml'), ssmlChunks.join('\n'));
+    fs.writeFileSync(path.join(dataDir, 'contentAnalysis.json'), JSON.stringify(contentAnalysis, null, 2));
 
     const audioBuffer = await synthesizeSSMLChunks({ ssmlChunks }, context);
     fs.writeFileSync(path.join(dataDir, 'audio.mp3'), audioBuffer);
