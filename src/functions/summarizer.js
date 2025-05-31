@@ -51,6 +51,8 @@ app.http('abstractiveSummarization', {
 });
 
 async function performSummarization(documents, type, context) {
+
+  context.log(`Performing ${type} summarization`);
   const client = new TextAnalysisClient(endpoint, new AzureKeyCredential(apiKey));
   const actions = [
     {
@@ -80,7 +82,7 @@ async function performSummarization(documents, type, context) {
         const resultText = type === 'Extractive' 
           ? result.sentences.map((sentence) => sentence.text).join(".\n")
           : result.summaries.map((summary) => summary.text).join(".\n");
-        summary += resultText;
+        summary += '\n' + resultText;
       }
     }
 
