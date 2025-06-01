@@ -23,7 +23,6 @@ const voiceConfig = {
 const contentAnalysisSchema = {
   type: "object",
   properties: {
-    overallTone: { type: "string", enum: ["serious", "humorous", "controversial", "informative", "emotional", "casual"] },
     keyThemes: { type: "array", items: { type: "string" }, maxItems: 5 },
     conversationalHooks: {
       type: "array",
@@ -32,7 +31,6 @@ const contentAnalysisSchema = {
         properties: {
           hook: { type: "string" },
           placement: { type: "string", enum: ["intro", "transition", "conclusion"] },
-          tone: { type: "string", enum: ["curious", "dramatic", "light", "serious", "teasing"] }
         }
       }
     },
@@ -43,7 +41,6 @@ const contentAnalysisSchema = {
         properties: {
           sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
           emotionalIntensity: { type: "number", minimum: 1, maximum: 10 },
-          discussionType: { type: "string", enum: ["debate", "question", "story", "advice", "humor"] },
           suggestedVoiceStyle: {  type: "string", enum: ["narrative", "excited", "empathetic", "neutral", "calm", "conversational", "news", "cheerful", "friendly", "newscast", "serious"] },
           hostCommentary: { type: "string", description: "Ready to use as host commentary on the subject" },
           transitionPhrase: { type: "string" , description: "Ready to use transition phase to be used to transition to the next topic" }
@@ -121,13 +118,11 @@ discussion type, suggested voice styles, host commentary, and smooth transitions
 
 function generateFallbackAnalysis(threads) {
   return {
-    overallTone: "casual",
     keyThemes: ["discussion", "community", "sharing"],
-    conversationalHooks: [{ hook: "Let's see what caught everyone's attention today", placement: "intro", tone: "friendly" }],
+    conversationalHooks: [{ hook: "Let's see what caught everyone's attention today", placement: "intro" }],
     threadAnalysis: threads.map((_, idx) => ({
       sentiment: "neutral",
       emotionalIntensity: 5,
-      discussionType: "discussion",
       suggestedVoiceStyle: "narration-professional",
       hostCommentary: "This is an interesting discussion point.",
       transitionPhrase: "Moving on to our next topic"
