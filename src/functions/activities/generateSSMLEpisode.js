@@ -23,17 +23,12 @@ const voiceConfig = {
 const contentAnalysisSchema = {
   type: "object",
   properties: {
-    overallTone: { type: "string", enum: ["serious", "humorous", "controversial", "informative", "emotional", "casual"] },
     keyThemes: { type: "array", items: { type: "string" }, maxItems: 5 },
     conversationalHooks: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          hook: { type: "string" },
-          placement: { type: "string", enum: ["intro", "transition", "conclusion"] },
-          tone: { type: "string", enum: ["curious", "dramatic", "light", "serious", "teasing"] }
-        }
+      type: "object",
+      properties: {
+        intro: { type: "string", description: "Ready to use as 2-3 sentence intro to the episode." },
+        conclusion: { type: "string", description: "Ready to use as 2-3 sentence conclusion to the episode" },
       }
     },
     threadAnalysis: {
@@ -43,10 +38,9 @@ const contentAnalysisSchema = {
         properties: {
           sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
           emotionalIntensity: { type: "number", minimum: 1, maximum: 10 },
-          discussionType: { type: "string", enum: ["debate", "question", "story", "advice", "humor"] },
-          suggestedVoiceStyle: {  type: "string", enum: ["narrative", "excited", "empathetic", "neutral", "calm", "conversational", "news", "cheerful", "friendly", "newscast", "serious"] },
+          suggestedVoiceStyle: { type: "string", enum: ["narrative", "excited", "empathetic", "neutral", "calm", "conversational", "news", "cheerful", "friendly", "newscast", "serious"] },
           hostCommentary: { type: "string", description: "Ready to use as host commentary on the subject" },
-          transitionPhrase: { type: "string" , description: "Ready to use transition phase to be used to transition to the next topic" }
+          transitionPhrase: { type: "string", description: "Ready to use transition phase to be used to transition to this thread" }
         }
       }
     }
@@ -69,28 +63,25 @@ async function analyzeContentWithPerplexity(threads, context) {
 Return data in **strict JSON format** that adheres to the provided schema. Your output will be parsed by automated systems — do not include free text, only valid JSON.
 
 Requirements:
-- Assign an **overall tone** for the full batch.
 - Identify **up to 5 key themes**.
-- Suggest **conversational hooks** for host delivery, specifying their placement and tone.
+- Suggest **conversational hooks** for host delivery during intro and conclusion.
 - For each thread:
-  - Determine **sentiment**, **emotional intensity** (1–10), and **discussion type**.
+  - Determine **sentiment**, **emotional intensity** (1–10).
   - Recommend a **voice style**, including pitch/rate/style (if applicable).
   - Write a **host commentary** (1-2 sentences, SSML-friendly) summarizing or reacting to the thread.
-  - Add a **transition phrase** to move to the next thread smoothly.
+  - Add a **transition phrase** to move to this thread smoothly.
 
 Avoid generalities. Be specific, precise, and compatible with TTS output.
-
-Schema follows:
-${contentAnalysisSchema}`
+`
       },
       {
         role: "user",
         content: `Analyze these Reddit threads for podcast production:
 ${contentSummary}
                    
-Provide analysis including overall tone, key themes, conversational hooks, 
+Provide analysis including key themes, conversational hooks, 
 and specific guidance for each thread including sentiment, emotional intensity, 
-discussion type, suggested voice styles, host commentary, and smooth transitions.
+suggested voice styles, host commentary, and smooth transitions.
 `
       }
     ],
@@ -121,13 +112,14 @@ discussion type, suggested voice styles, host commentary, and smooth transitions
 
 function generateFallbackAnalysis(threads) {
   return {
-    overallTone: "casual",
     keyThemes: ["discussion", "community", "sharing"],
-    conversationalHooks: [{ hook: "Let's see what caught everyone's attention today", placement: "intro", tone: "friendly" }],
+    conversationalHooks: {
+      intro: "Join us as we dive into today's intriguing discussions and uncover unexpected insights.",
+      conclusion: "Thanks for tuning in. Stay curious and join us next time for more enlightening conversations."
+    },
     threadAnalysis: threads.map((_, idx) => ({
       sentiment: "neutral",
       emotionalIntensity: 5,
-      discussionType: "discussion",
       suggestedVoiceStyle: "narration-professional",
       hostCommentary: "This is an interesting discussion point.",
       transitionPhrase: "Moving on to our next topic"
@@ -181,9 +173,9 @@ function generateDynamicSSML(content, voiceName, style, sentiment, intensity, ad
 }
 
 
-function createConversationalTransition(_, toThread, analysis) {
+function createConversationalTransition(transitionPhrase) {
   const transitions = ["Now, here's something completely different", "Speaking of which, this next one really caught my eye", "On a related note", "This next discussion takes an interesting turn", "Now for something that sparked quite the debate"];
-  return escapeXml(analysis.threadAnalysis[toThread]?.transitionPhrase || transitions[Math.floor(Math.random() * transitions.length)]);
+  return escapeXml(transitionPhrase || transitions[Math.floor(Math.random() * transitions.length)]);
 }
 
 module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, context) {
@@ -191,12 +183,12 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
   context.log(`Analyzing content with Perplexity for ${input.threads.length} threads.`);
   const contentAnalysis = await analyzeContentWithPerplexity(input.threads, context);
 
-  const introHook = contentAnalysis.conversationalHooks?.find(h => h.placement === "intro");
+  const introHook = contentAnalysis.conversationalHooks?.intro;
   const introContent = introHook
     ? `<s>Welcome to today's episode of Reddit Top Threads.</s><s><break time="300ms"/></s>
        <s>${escapeXml(introHook.hook)}.</s><s><break time="500ms"/></s>
        <s>We've got ${input.threads.length} fascinating discussions to explore today, 
-          covering themes like ${contentAnalysis.keyThemes.slice(0, 3).join(', ')}.</s>`
+          covering themes like ${contentAnalysis.keyThemes.join(', ')}.</s>`
     : `<s>Welcome to today's episode of Reddit Top Threads.</s>
        <s>Let's dive into today's most engaging discussions!</s>`;
 
@@ -212,7 +204,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
     const a = contentAnalysis.threadAnalysis[idx] || {};
     const parts = [];
 
-    if (idx > 0) parts.push(generateDynamicSSML(createConversationalTransition(idx - 1, idx, contentAnalysis), voiceConfig.host.name, "newscast-casual", "neutral", 4));
+    if (idx > 0) parts.push(generateDynamicSSML(createConversationalTransition(a?.transitionPhrase), voiceConfig.host.name, "newscast-casual", "neutral", 4));
 
     const emph = a.emotionalIntensity > 7 ? "strong" : "moderate";
     parts.push(generateDynamicSSML(`<s><emphasis level=\"${emph}\">Thread ${idx + 1}:</emphasis> ${escapeXml(t.title)}</s>`, voiceConfig.host.name, a.suggestedVoiceStyle || "newscast-casual", a.sentiment || "neutral", a.emotionalIntensity || 5));
@@ -231,7 +223,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
     ssmlChunks.push(wrapSsmlBlock(parts.join('\n')));
   }
 
-  const outroHook = contentAnalysis.conversationalHooks?.find(h => h.placement === "conclusion");
+  const outroHook = contentAnalysis.conversationalHooks?.conclusion;
   const outroContent = outroHook
     ? `<s>${escapeXml(outroHook.hook)}</s><s>Thanks for joining!</s>`
     : `<s>Thanks for listening, and we'll see you next time!</s>`;
