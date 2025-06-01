@@ -35,7 +35,7 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
       synthesizer.speakSsmlAsync(
         ssml,
         result => {
-          context.log(`🔊 Synthesized chunk ${index + 1}/${input.ssmlChunks.length}...`);
+          context.log(`Synthesized chunk ${index + 1}/${input.ssmlChunks.length}...`);
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
             resolve({ index, buffer: Buffer.from(result.audioData) });
           } else {
@@ -55,7 +55,7 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
   // Sort buffers by their original index to ensure they are combined in order
   const buffers = results.sort((a, b) => a.index - b.index).map(result => result.buffer);
 
-  context.log(`🔊 Synthesis complete. Merging chunks...`);
+  context.log(`Synthesis complete. Merging chunks...`);
 
   if(context.env === 'TEST') return mergeWavBuffers(buffers);
 

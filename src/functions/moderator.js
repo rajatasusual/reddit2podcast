@@ -27,7 +27,7 @@ async function moderateContent(text, context) {
     return result.body;
 
   } catch (err) {
-    context.log(`💥 Error moderating content: ${err.message}`);
+    context.log(`Error moderating content: ${err.message}`);
     throw err;
   }
 }

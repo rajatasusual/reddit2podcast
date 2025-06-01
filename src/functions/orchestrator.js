@@ -43,6 +43,6 @@ app.timer('startRedditPodcast', {
   handler: async (myTimer, context) => {
     const client = df.getClient(context);
     await client.startNew('orchestrator', undefined);
-    context.log("🕓 Orchestration started for Reddit2Podcast");
+    context.log("Orchestration started for Reddit2Podcast");
   }
 });

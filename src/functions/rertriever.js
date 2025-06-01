@@ -86,7 +86,7 @@ app.http('episodes', {
       );
 
       const episodeQuery = request.query.get('episode'); // ?episode=YYYY-MM-DD
-      context.log(`🔍 Looking up episode(s). Filter: ${episodeQuery || 'all'}`);
+      context.log(`Looking up episode(s). Filter: ${episodeQuery || 'all'}`);
 
       const episodes = [];
       if (episodeQuery) {
@@ -118,7 +118,7 @@ app.http('episodes', {
       }
 
       if (episodes.length === 0) {
-        context.log(`⚠️ No episodes found for: ${episodeQuery || 'all'}`);
+        context.log(`No episodes found for: ${episodeQuery || 'all'}`);
         return {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
@@ -134,7 +134,7 @@ app.http('episodes', {
       };
 
     } catch (err) {
-      context.log(`💥 Error retrieving episodes: ${err.message}`);
+      context.log(`Error retrieving episodes: ${err.message}`);
       return {
         status: 500,
         headers: { 'Content-Type': 'application/json' },

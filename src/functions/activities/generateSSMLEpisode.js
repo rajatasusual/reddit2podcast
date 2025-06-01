@@ -32,7 +32,7 @@ const contentAnalysisSchema = {
         properties: {
           hook: { type: "string" },
           placement: { type: "string", enum: ["intro", "transition", "conclusion"] },
-          tone: { type: "string" }
+          tone: { type: "string", enum: ["curious", "dramatic", "light", "serious", "teasing"] }
         }
       }
     },
@@ -41,13 +41,12 @@ const contentAnalysisSchema = {
       items: {
         type: "object",
         properties: {
-          threadIndex: { type: "number" },
           sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
           emotionalIntensity: { type: "number", minimum: 1, maximum: 10 },
           discussionType: { type: "string", enum: ["debate", "question", "story", "advice", "humor"] },
-          suggestedVoiceStyle: { type: "string" },
-          hostCommentary: { type: "string" },
-          transitionPhrase: { type: "string" }
+          suggestedVoiceStyle: {  type: "string", enum: ["narrative", "excited", "empathetic", "neutral", "calm", "conversational", "news", "cheerful", "friendly", "newscast", "serious"] },
+          hostCommentary: { type: "string", description: "Ready to use as host commentary on the subject" },
+          transitionPhrase: { type: "string" , description: "Ready to use transition phase to be used to transition to the next topic" }
         }
       }
     }
@@ -65,18 +64,34 @@ async function analyzeContentWithPerplexity(threads, context) {
     messages: [
       {
         role: "system",
-        content: `You are an expert podcast producer analyzing Reddit content to create engaging audio experiences. 
-                   Analyze the provided threads for tone, themes, and conversational opportunities. 
-                   Provide structured insights for dynamic voice modulation and conversational flow.`
+        content: `You are an expert podcast producer skilled in voice-driven storytelling. Your task is to analyze Reddit threads and produce structured analysis suitable for high-quality TTS audio production.
+
+Return data in **strict JSON format** that adheres to the provided schema. Your output will be parsed by automated systems — do not include free text, only valid JSON.
+
+Requirements:
+- Assign an **overall tone** for the full batch.
+- Identify **up to 5 key themes**.
+- Suggest **conversational hooks** for host delivery, specifying their placement and tone.
+- For each thread:
+  - Determine **sentiment**, **emotional intensity** (1–10), and **discussion type**.
+  - Recommend a **voice style**, including pitch/rate/style (if applicable).
+  - Write a **host commentary** (1-2 sentences, SSML-friendly) summarizing or reacting to the thread.
+  - Add a **transition phrase** to move to the next thread smoothly.
+
+Avoid generalities. Be specific, precise, and compatible with TTS output.
+
+Schema follows:
+${contentAnalysisSchema}`
       },
       {
         role: "user",
         content: `Analyze these Reddit threads for podcast production:
-                   ${contentSummary}
+${contentSummary}
                    
-                   Provide analysis including overall tone, key themes, conversational hooks, 
-                   and specific guidance for each thread including sentiment, emotional intensity, 
-                   discussion type, suggested voice styles, host commentary, and smooth transitions.`
+Provide analysis including overall tone, key themes, conversational hooks, 
+and specific guidance for each thread including sentiment, emotional intensity, 
+discussion type, suggested voice styles, host commentary, and smooth transitions.
+`
       }
     ],
     response_format: {
@@ -110,7 +125,6 @@ function generateFallbackAnalysis(threads) {
     keyThemes: ["discussion", "community", "sharing"],
     conversationalHooks: [{ hook: "Let's see what caught everyone's attention today", placement: "intro", tone: "friendly" }],
     threadAnalysis: threads.map((_, idx) => ({
-      threadIndex: idx,
       sentiment: "neutral",
       emotionalIntensity: 5,
       discussionType: "discussion",
@@ -178,7 +192,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
   const contentAnalysis = await analyzeContentWithPerplexity(input.threads, context);
 
   const introHook = contentAnalysis.conversationalHooks?.find(h => h.placement === "intro");
-  const introContent = introHook 
+  const introContent = introHook
     ? `<s>Welcome to today's episode of Reddit Top Threads.</s><s><break time="300ms"/></s>
        <s>${escapeXml(introHook.hook)}.</s><s><break time="500ms"/></s>
        <s>We've got ${input.threads.length} fascinating discussions to explore today, 
