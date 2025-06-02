@@ -17,18 +17,22 @@ async function reddit2podcast(context) {
     mkdirp.sync(dataDir);
 
     const threads = await getTopThreads({ subreddit }, context);
-    fs.writeFileSync(path.join(dataDir, 'threads.json'), JSON.stringify(threads, null, 2));
+    if (!context.skip?.threads) fs.writeFileSync(path.join(dataDir, 'threads.json'), JSON.stringify(threads, null, 2));
 
     const { cleanThreads } = await moderateThreads({ threads }, context);
-    fs.writeFileSync(path.join(dataDir, 'cleanThreads.json'), JSON.stringify(cleanThreads, null, 2));
+    if (!context.skip?.cleanThreads) fs.writeFileSync(path.join(dataDir, 'cleanThreads.json'), JSON.stringify(cleanThreads, null, 2));
 
     const { ssmlChunks, contentAnalysis } = await generateSSMLEpisode({ threads: cleanThreads }, context);
-    fs.writeFileSync(path.join(dataDir, 'ssml.xml'), ssmlChunks.join('\n'));
-    fs.writeFileSync(path.join(dataDir, 'contentAnalysis.json'), JSON.stringify(contentAnalysis, null, 2));
+    if (!context.skip?.ssml) {
+      fs.writeFileSync(path.join(dataDir, 'ssmlChunks.txt'), ssmlChunks.join('{{CHUNKS}}'));
+      fs.writeFileSync(path.join(dataDir, 'contentAnalysis.json'), JSON.stringify(contentAnalysis, null, 2));
+    }
+    const { mergedAudio, transcripts } = await synthesizeSSMLChunks({ ssmlChunks }, context);
+    if (!context.skip?.synthesis) {
+      fs.writeFileSync(path.join(dataDir, 'audio.wav'), mergedAudio);
+      fs.writeFileSync(path.join(dataDir, 'transcripts.json'), JSON.stringify(transcripts, null, 2));
+    } 
 
-    const audioBuffer = await synthesizeSSMLChunks({ ssmlChunks }, context);
-    fs.writeFileSync(path.join(dataDir, 'audio.mp3'), audioBuffer);
-    
     context.log('Podcast generation complete.');
   } catch (err) {
     context.log('Error generating podcast:', err);

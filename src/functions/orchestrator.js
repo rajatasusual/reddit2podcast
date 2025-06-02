@@ -15,7 +15,7 @@ df.app.orchestration('orchestrator', function* (context) {
   const { ssmlChunks, summary, ssmlUrl } = yield context.df.callActivity("generateSSMLEpisode", { threads: cleanThreads, episodeId });
 
   // 4. Synthesize audio
-  const audioUrl = yield context.df.callActivity("synthesizeSSMLChunks", {ssmlChunks, episodeId});
+  const {audioUrl, transcripts} = yield context.df.callActivity("synthesizeSSMLChunks", {ssmlChunks, episodeId});
 
   // 5. Save metadata
   const metadata = {

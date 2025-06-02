@@ -2,7 +2,13 @@
 require('dotenv').config();
 const context = {
   log: console.log,
-  env: "TEST"
+  env: "TEST",
+  skip: {
+    threads: false,
+    cleanThreads: false,
+    ssml: false,
+    synthesis: false
+  }
 };
 
 // Import the process function directly

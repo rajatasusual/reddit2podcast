@@ -179,6 +179,18 @@ function createConversationalTransition(transitionPhrase) {
 }
 
 module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, context) {
+
+  if (context.env === 'TEST' && context.skip?.ssml) {
+    const path = require('path');
+    const fs = require('fs');
+    const ssmlChunksFile = fs.readFileSync(path.join(process.cwd(), 'src/data/ssmlChunks.txt'), 'utf-8');
+    if (ssmlChunksFile) {
+      const ssmlChunks = ssmlChunksFile.split('{{CHUNKS}}');
+      const contentAnalysis = require(path.join(process.cwd(), 'src/data/contentAnalysis.json'));
+      return { ssmlChunks, contentAnalysis: contentAnalysis? contentAnalysis : {} };
+    }
+  }
+
   const ssmlChunks = [];
   context.log(`Analyzing content with Perplexity for ${input.threads.length} threads.`);
   const contentAnalysis = await analyzeContentWithPerplexity(input.threads, context);

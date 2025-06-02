@@ -2,6 +2,15 @@ const removeMd = require('remove-markdown');
 const snoowrap = require('snoowrap');
 
 module.exports.getTopThreads = async function getTopThreads(input, context) {
+
+  if (context.env === 'TEST' && context.skip?.threads) {
+    const path = require('path');
+    const threadsFile = require(path.join(process.cwd(), 'src/data/threads.json'));
+    if (threadsFile?.length > 0) {
+      return { threads: threadsFile };
+    }
+  }
+
   const r = new snoowrap({
     userAgent: 'RedditToPodcast v1.0',
     clientId: process.env.REDDIT_CLIENT_ID,
