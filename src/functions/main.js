@@ -27,10 +27,10 @@ async function reddit2podcast(context) {
       fs.writeFileSync(path.join(dataDir, 'ssmlChunks.txt'), ssmlChunks.join('{{CHUNKS}}'));
       fs.writeFileSync(path.join(dataDir, 'contentAnalysis.json'), JSON.stringify(contentAnalysis, null, 2));
     }
-    const { mergedAudio, transcripts } = await synthesizeSSMLChunks({ ssmlChunks }, context);
+    const { mergedAudio, fullTranscript } = await synthesizeSSMLChunks({ ssmlChunks }, context);
     if (!context.skip?.synthesis) {
       fs.writeFileSync(path.join(dataDir, 'audio.wav'), mergedAudio);
-      fs.writeFileSync(path.join(dataDir, 'transcripts.json'), JSON.stringify(transcripts, null, 2));
+      fs.writeFileSync(path.join(dataDir, 'transcript.json'), JSON.stringify(fullTranscript, null, 2));
     } 
 
     context.log('Podcast generation complete.');

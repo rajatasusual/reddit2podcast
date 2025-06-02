@@ -22,7 +22,8 @@ module.exports.saveEpisodeMetadata = async function saveEpisodeMetadata(input, c
     jsonUrl: input.jsonUrl,
     ssmlUrl: input.ssmlUrl,
     createdOn: new Date().toISOString(),
-    summary: input.summary
+    summary: input.summary,
+    transcriptsUrl: input.transcriptsUrl
   };
 
   await tableClient.upsertEntity(entity);

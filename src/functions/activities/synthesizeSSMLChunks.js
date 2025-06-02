@@ -31,22 +31,21 @@ function mergeWavBuffers(buffers) {
 
 module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input, context) {
 
-  const transcripts = new Array(input.ssmlChunks.length).fill([]);
-
-  const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
+  const transcripts = Array.from({ length: input.ssmlChunks.length }, () => []);
 
   const synthesizeChunk = async (ssml, index) => {
-    synthesizer.wordBoundary = function (s, e) {
+
+    const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
+
+    synthesizer.wordBoundary = function (_, e) {
       if (e.boundaryType !== sdk.SpeechSynthesisBoundaryType.Sentence) return;
       transcripts[index].push({
-        boundaryType: e.boundaryType,
-        audioOffset: (e.audioOffset + 5000) / 10000,
+        audioOffset: e.audioOffset,
         duration: e.duration,
         text: e.text,
         textOffset: e.textOffset,
         wordLength: e.wordLength
       });
-      console.log(str);
     };
 
     return new Promise((resolve, reject) => {
@@ -55,7 +54,8 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
         result => {
           context.log(`Synthesized chunk ${index + 1}/${input.ssmlChunks.length}...`);
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-            resolve({ index, buffer: Buffer.from(result.audioData) });
+            synthesizer.close();
+            resolve({ duration: result.audioDuration, index, buffer: Buffer.from(result.audioData) });
           } else {
             synthesizer.close();
             reject(new Error(`Synthesis failed: ${result.errorDetails}`));
@@ -71,17 +71,26 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
 
   const results = await Promise.all(input.ssmlChunks.map((ssml, i) => synthesizeChunk(ssml, i)));
 
-  synthesizer.close();
-
   // Sort buffers by their original index to ensure they are combined in order
   const buffers = results.sort((a, b) => a.index - b.index).map(result => result.buffer);
 
-  context.log(`Synthesis complete. Merging chunks...`);
+  let cumulativeOffset = 0;
 
+  for (const result of results) {
+    for (const t of transcripts[result.index]) {
+      t.audioOffset += cumulativeOffset;
+    }
+    cumulativeOffset += result.duration;
+  }
+
+  context.log(`Synthesis complete. Merging chunks...`);
   const mergedAudio = mergeWavBuffers(buffers);
-  if (context.env === 'TEST') return { mergedAudio, transcripts };
+
+  const fullTranscript = transcripts.flat();
+
+  if (context.env === 'TEST') return { mergedAudio, fullTranscript };
 
   const audioUrl = await uploadAudioToBlobStorage(mergeWavBuffers(buffers), `audio/episode-${input.episodeId}.wav`);
-  const transcriptsUrl = await uploadTranscriptToBlobStorage(Buffer.from(JSON.stringify(transcripts)), `transcripts/episode-${input.episodeId}.json`);
+  const transcriptsUrl = await uploadTranscriptToBlobStorage(fullTranscript, `transcripts/episode-${input.episodeId}.json`);
   return { audioUrl, transcriptsUrl };
 }
