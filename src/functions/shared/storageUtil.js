@@ -6,7 +6,7 @@ const privateContainerClient = blobServiceClient.getContainerClient(`${process.e
 
 async function uploadBufferToPublicBlob(buffer, filename, contentType = "application/octet-stream") {
   await publicContainerClient.createIfNotExists(
-    { access: "blob"}
+    { access: "blob" }
   );
   const blockBlobClient = publicContainerClient.getBlockBlobClient(filename);
   await blockBlobClient.uploadData(buffer, {
@@ -40,4 +40,16 @@ async function uploadAudioToBlobStorage(buffer, filename) {
   return await uploadBufferToPrivateBlob(buffer, filename, 'audio/x-wav');
 }
 
-module.exports = { uploadBufferToPublicBlob, uploadXmlToBlobStorage, uploadJsonToBlobStorage, uploadAudioToBlobStorage };
+async function uploadTranscriptToBlobStorage(transcript, filename) {
+  const jsonString = JSON.stringify(transcript, null, 2);
+  const buffer = Buffer.from(jsonString, 'utf-8');
+  return await uploadBufferToPrivateBlob(buffer, filename, 'application/json');
+}
+
+module.exports = {
+  uploadBufferToPublicBlob,
+  uploadXmlToBlobStorage,
+  uploadJsonToBlobStorage,
+  uploadAudioToBlobStorage,
+  uploadTranscriptToBlobStorage
+};

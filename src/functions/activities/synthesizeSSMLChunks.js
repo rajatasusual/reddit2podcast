@@ -1,8 +1,10 @@
 const sdk = require("microsoft-cognitiveservices-speech-sdk");
-const { uploadAudioToBlobStorage } = require("../shared/storageUtil");
+const { uploadAudioToBlobStorage, uploadTranscriptToBlobStorage } = require("../shared/storageUtil");
 
 const speechConfig = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
 speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm; // WAV PCM
+
+speechConfig.setProperty(sdk.PropertyId.SpeechServiceResponse_RequestSentenceBoundary, "true");
 
 function mergeWavBuffers(buffers) {
   const HEADER_SIZE = 44;
@@ -28,9 +30,25 @@ function mergeWavBuffers(buffers) {
 }
 
 module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input, context) {
+
+  const transcripts = new Array(input.ssmlChunks.length).fill([]);
+
   const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
 
   const synthesizeChunk = async (ssml, index) => {
+    synthesizer.wordBoundary = function (s, e) {
+      if (e.boundaryType !== sdk.SpeechSynthesisBoundaryType.Sentence) return;
+      transcripts[index].push({
+        boundaryType: e.boundaryType,
+        audioOffset: (e.audioOffset + 5000) / 10000,
+        duration: e.duration,
+        text: e.text,
+        textOffset: e.textOffset,
+        wordLength: e.wordLength
+      });
+      console.log(str);
+    };
+
     return new Promise((resolve, reject) => {
       synthesizer.speakSsmlAsync(
         ssml,
@@ -39,11 +57,14 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
             resolve({ index, buffer: Buffer.from(result.audioData) });
           } else {
-            reject(new Error(`Synthesis failed: ${result.errorDetails}`));
             synthesizer.close();
+            reject(new Error(`Synthesis failed: ${result.errorDetails}`));
           }
         },
-        error => reject(error)
+        error => {
+          synthesizer.close();
+          reject(error);
+        }
       );
     });
   };
@@ -57,8 +78,10 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
 
   context.log(`Synthesis complete. Merging chunks...`);
 
-  if(context.env === 'TEST') return mergeWavBuffers(buffers);
+  const mergedAudio = mergeWavBuffers(buffers);
+  if (context.env === 'TEST') return { mergedAudio, transcripts };
 
   const audioUrl = await uploadAudioToBlobStorage(mergeWavBuffers(buffers), `audio/episode-${input.episodeId}.wav`);
-  return audioUrl;
+  const transcriptsUrl = await uploadTranscriptToBlobStorage(Buffer.from(JSON.stringify(transcripts)), `transcripts/episode-${input.episodeId}.json`);
+  return { audioUrl, transcriptsUrl };
 }
