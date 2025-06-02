@@ -98,7 +98,8 @@ app.http('episodes', {
             audioUrl: entity.audioUrl,
             jsonUrl: entity.jsonUrl,
             ssmlUrl: entity.ssmlUrl,
-            createdOn: entity.createdOn
+            createdOn: entity.createdOn,
+            transcriptsUrl: entity.transcriptsUrl
           });
         }
       } else {
@@ -111,7 +112,8 @@ app.http('episodes', {
             jsonUrl: entity.jsonUrl,
             ssmlUrl: entity.ssmlUrl,
             createdOn: entity.createdOn,
-            summary: entity.summary
+            summary: entity.summary,
+            transcriptsUrl: entity.transcriptsUrl
           });
         }
         episodes.sort((a, b) => new Date(b.date) - new Date(a.date));
