@@ -200,7 +200,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
     ? `<s>Welcome to today's episode of Reddit Top Threads.</s><s><break time="300ms"/></s>
        <s>${escapeXml(introHook.hook)}.</s><s><break time="500ms"/></s>
        <s>We've got ${input.threads.length} fascinating discussions to explore today, 
-          covering themes like ${contentAnalysis.keyThemes.join(', ')}.</s>`
+          covering themes like ${escapeXml(contentAnalysis.keyThemes.join(', '))}.</s>`
     : `<s>Welcome to today's episode of Reddit Top Threads.</s>
        <s>Let's dive into today's most engaging discussions!</s>`;
 
