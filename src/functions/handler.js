@@ -3,6 +3,7 @@ const df = require('durable-functions');
 const {
   getTopThreads,
   moderateThreads,
+  generateContentAnalysis,
   generateSSMLEpisode,
   synthesizeSSMLChunks,
   saveEpisodeMetadata,
@@ -18,6 +19,12 @@ df.app.activity('getTopThreads', {
 df.app.activity('moderateThreads', {
   handler: async (input, context) => {
     return await moderateThreads(input, context);
+  }
+});
+
+df.app.activity('generateContentAnalysis', {
+  handler: async (input, context) => {
+    return await generateContentAnalysis(input, context);
   }
 });
 

@@ -6,6 +6,7 @@ const context = {
   skip: {
     threads: false,
     cleanThreads: false,
+    contentAnalysis: false,
     ssml: false,
     synthesis: false
   }

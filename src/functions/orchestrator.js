@@ -11,13 +11,16 @@ df.app.orchestration('orchestrator', function* (context) {
   // 2. Moderate threads
   const {cleanThreads, jsonUrl} = yield context.df.callActivity("moderateThreads", {threads, episodeId});
 
-  // 3. Generate SSML
-  const { ssmlChunks, summary, ssmlUrl } = yield context.df.callActivity("generateSSMLEpisode", { threads: cleanThreads, episodeId });
+  // 3. Generate content analysis
+  const contentAnalysis = yield context.df.callActivity("generateContentAnalysis", {threads: cleanThreads});
 
-  // 4. Synthesize audio
+  // 4. Generate SSML
+  const { ssmlChunks, summary, ssmlUrl } = yield context.df.callActivity("generateSSMLEpisode", { threads: cleanThreads, episodeId, contentAnalysis });
+
+  // 5. Synthesize audio
   const {audioUrl, transcriptsUrl} = yield context.df.callActivity("synthesizeSSMLChunks", {ssmlChunks, episodeId});
 
-  // 5. Save metadata
+  // 6. Save metadata
   const metadata = {
     episodeId,
     subreddit,
@@ -29,7 +32,7 @@ df.app.orchestration('orchestrator', function* (context) {
   };
   yield context.df.callActivity("saveEpisodeMetadata", metadata);
 
-  // 6. Generate RSS feed
+  // 7. Generate RSS feed
   yield context.df.callActivity("generateRSSFeed");
 
   return {

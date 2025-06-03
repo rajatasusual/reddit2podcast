@@ -1,6 +1,7 @@
 const {
   getTopThreads,
   moderateThreads,
+  generateContentAnalysis,
   generateSSMLEpisode,
   synthesizeSSMLChunks,
 } = require('./activities')
@@ -22,7 +23,10 @@ async function reddit2podcast(context) {
     const { cleanThreads } = await moderateThreads({ threads }, context);
     if (!context.skip?.cleanThreads) fs.writeFileSync(path.join(dataDir, 'cleanThreads.json'), JSON.stringify(cleanThreads, null, 2));
 
-    const { ssmlChunks, contentAnalysis } = await generateSSMLEpisode({ threads: cleanThreads }, context);
+    const contentAnalysis = await generateContentAnalysis({ threads: cleanThreads }, context);
+    if (!context.skip?.contentAnalysis) fs.writeFileSync(path.join(dataDir, 'contentAnalysis.json'), JSON.stringify(contentAnalysis, null, 2));
+
+    const { ssmlChunks } = await generateSSMLEpisode({ threads: cleanThreads, contentAnalysis }, context);
     if (!context.skip?.ssml) {
       fs.writeFileSync(path.join(dataDir, 'ssmlChunks.txt'), ssmlChunks.join('{{CHUNKS}}'));
       fs.writeFileSync(path.join(dataDir, 'contentAnalysis.json'), JSON.stringify(contentAnalysis, null, 2));
