@@ -1,14 +1,43 @@
 const sdk = require("microsoft-cognitiveservices-speech-sdk");
 const { uploadAudioToBlobStorage, uploadTranscriptToBlobStorage } = require("../shared/storageUtil");
+const { getSecretClient } = require("../shared/keyVault");
 
-const speechConfig = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
-speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm; // WAV PCM
+class SpeechClient {
+  static instance;
 
-speechConfig.setProperty(sdk.PropertyId.SpeechServiceResponse_RequestSentenceBoundary, "true");
+  constructor() {
+    this.initialized = false;
+  }
+
+  static getInstance() {
+    if (!SpeechClient.instance) {
+      SpeechClient.instance = new SpeechClient();
+    }
+    return SpeechClient.instance;
+  }
+
+  async init() {
+    if (this.initialized) return;
+
+    const secretClient = getSecretClient();
+    const key = process.env.AZURE_SPEECH_KEY || (await secretClient.getSecret("AZURE-SPEECH-KEY")).value;
+    const region = process.env.AZURE_SPEECH_REGION;
+
+    this.speechConfig = sdk.SpeechConfig.fromSubscription(key, region);
+    this.speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm;
+    this.speechConfig.setProperty(sdk.PropertyId.SpeechServiceResponse_RequestSentenceBoundary, "true");
+
+    this.initialized = true;
+  }
+
+  async getSpeechConfig() {
+    await this.init();
+    return this.speechConfig;
+  }
+}
 
 function mergeWavBuffers(buffers) {
   const HEADER_SIZE = 44;
-
   const firstHeader = buffers[0].slice(0, HEADER_SIZE);
   const audioDataBuffers = buffers.map(buf => buf.slice(HEADER_SIZE));
   const totalAudioDataLength = audioDataBuffers.reduce((sum, b) => sum + b.length, 0);
@@ -16,9 +45,8 @@ function mergeWavBuffers(buffers) {
   const mergedBuffer = Buffer.alloc(HEADER_SIZE + totalAudioDataLength);
   firstHeader.copy(mergedBuffer, 0);
 
-  // Write correct file size and data length in header
-  mergedBuffer.writeUInt32LE(36 + totalAudioDataLength, 4);  // File size = 36 + data
-  mergedBuffer.writeUInt32LE(totalAudioDataLength, 40);      // Subchunk2Size
+  mergedBuffer.writeUInt32LE(36 + totalAudioDataLength, 4);
+  mergedBuffer.writeUInt32LE(totalAudioDataLength, 40);
 
   let offset = HEADER_SIZE;
   for (const audioBuf of audioDataBuffers) {
@@ -29,53 +57,62 @@ function mergeWavBuffers(buffers) {
   return mergedBuffer;
 }
 
-module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input, context) {
+module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input, context = {}) {
+  const { ssmlChunks, episodeId } = input;
+  if (!Array.isArray(ssmlChunks) || ssmlChunks.length === 0) {
+    throw new Error("Input must include non-empty ssmlChunks array.");
+  }
 
-  const transcripts = Array.from({ length: input.ssmlChunks.length }, () => []);
+  const transcripts = Array.from({ length: ssmlChunks.length }, () => []);
+  const speechConfig = await SpeechClient.getInstance().getSpeechConfig();
 
   const synthesizeChunk = async (ssml, index) => {
-
-    const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
-
-    synthesizer.wordBoundary = function (_, e) {
-      if (e.boundaryType !== sdk.SpeechSynthesisBoundaryType.Sentence) return;
-      transcripts[index].push({
-        audioOffset: e.audioOffset,
-        duration: e.duration,
-        text: e.text,
-        textOffset: e.textOffset,
-        wordLength: e.wordLength
-      });
-    };
-
     return new Promise((resolve, reject) => {
+      const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
+
+      synthesizer.wordBoundary = function (_, e) {
+        if (e.boundaryType === sdk.SpeechSynthesisBoundaryType.Sentence) {
+          transcripts[index].push({
+            audioOffset: e.audioOffset,
+            duration: e.duration,
+            text: e.text,
+            textOffset: e.textOffset,
+            wordLength: e.wordLength
+          });
+        }
+      };
+
       synthesizer.speakSsmlAsync(
         ssml,
         result => {
-          context.log(`Synthesized chunk ${index + 1}/${input.ssmlChunks.length}...`);
+          synthesizer.close();
+
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-            synthesizer.close();
-            resolve({ duration: result.audioDuration, index, buffer: Buffer.from(result.audioData) });
+            context.log?.(`Synthesized chunk ${index + 1}/${ssmlChunks.length}`);
+            resolve({
+              duration: result.audioDuration,
+              index,
+              buffer: Buffer.from(result.audioData)
+            });
           } else {
-            synthesizer.close();
             reject(new Error(`Synthesis failed: ${result.errorDetails}`));
           }
         },
-        error => {
+        err => {
           synthesizer.close();
-          reject(error);
+          reject(err);
         }
       );
     });
   };
 
-  const results = await Promise.all(input.ssmlChunks.map((ssml, i) => synthesizeChunk(ssml, i)));
+  const results = await Promise.all(ssmlChunks.map((ssml, i) => synthesizeChunk(ssml, i)));
 
-  // Sort buffers by their original index to ensure they are combined in order
-  const buffers = results.sort((a, b) => a.index - b.index).map(result => result.buffer);
+  const sortedBuffers = results
+    .sort((a, b) => a.index - b.index)
+    .map(r => r.buffer);
 
   let cumulativeOffset = 0;
-
   for (const result of results) {
     for (const t of transcripts[result.index]) {
       t.audioOffset += cumulativeOffset;
@@ -83,14 +120,16 @@ module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input,
     cumulativeOffset += result.duration;
   }
 
-  context.log(`Synthesis complete. Merging chunks...`);
-  const mergedAudio = mergeWavBuffers(buffers);
-
+  context.log?.(`Synthesis complete. Merging audio...`);
+  const mergedAudio = mergeWavBuffers(sortedBuffers);
   const fullTranscript = transcripts.flat();
 
-  if (context.env === 'TEST') return { mergedAudio, fullTranscript };
+  if (context.env === 'TEST') {
+    return { mergedAudio, fullTranscript };
+  }
 
-  const audioUrl = await uploadAudioToBlobStorage(mergeWavBuffers(buffers), `audio/episode-${input.episodeId}.wav`);
-  const transcriptsUrl = await uploadTranscriptToBlobStorage(fullTranscript, `transcripts/episode-${input.episodeId}.json`);
+  const audioUrl = await uploadAudioToBlobStorage(mergedAudio, `audio/episode-${episodeId}.wav`);
+  const transcriptsUrl = await uploadTranscriptToBlobStorage(fullTranscript, `transcripts/episode-${episodeId}.json`);
+
   return { audioUrl, transcriptsUrl };
-}
+};

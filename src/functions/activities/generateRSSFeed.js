@@ -3,10 +3,11 @@ const { TableClient, AzureNamedKeyCredential } = require('@azure/data-tables');
 const uploadBufferToPublicBlob = require('../shared/storageUtil').uploadBufferToPublicBlob;
 
 module.exports.generateRSSFeed = async function generateRSSFeed() {
+  const secretClient = require('../shared/keyVault').getSecretClient();
   const tableClient = new TableClient(
     `https://${process.env.AZURE_STORAGE_ACCOUNT}.table.core.windows.net`,
     "PodcastEpisodes",
-    new AzureNamedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, process.env.AZURE_STORAGE_ACCOUNT_KEY)
+    new AzureNamedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, process.env.AZURE_STORAGE_ACCOUNT_KEY ?? await secretClient.getSecret("AZURE-STORAGE-ACCOUNT-KEY").value)
   );
 
   const episodes = [];

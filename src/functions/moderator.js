@@ -9,8 +9,10 @@ require("dotenv").config();
 
 async function moderateContent(text, context) {
   try {
-    const endpoint = process.env["CONTENT_SAFETY_ENDPOINT"];
-    const key = process.env["CONTENT_SAFETY_KEY"];
+    const secretClient = require("./shared/keyVault").getSecretClient();
+    
+    const endpoint = process.env["CONTENT_SAFETY_ENDPOINT"] ?? await secretClient.getSecret("CONTENT-SAFETY-ENDPOINT").value;
+    const key = process.env["CONTENT_SAFETY_KEY"] ?? await secretClient.getSecret("CONTENT-SAFETY-KEY").value;
 
     const credential = new AzureKeyCredential(key);
     const client = ContentSafetyClient(endpoint, credential);

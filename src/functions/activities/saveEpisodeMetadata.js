@@ -5,11 +5,14 @@ module.exports.saveEpisodeMetadata = async function saveEpisodeMetadata(input, c
   
   context.log('Saving episode metadata...');
 
+  const secretClient = require('../shared/keyVault').getSecretClient();
+  const AZURE_STORAGE_ACCOUNT_KEY = process.env.AZURE_STORAGE_ACCOUNT_KEY ?? await secretClient.getSecret("AZURE-STORAGE-ACCOUNT-KEY").value;
+
   const tableName = "PodcastEpisodes";
   const tableClient = new TableClient(
     `https://${process.env.AZURE_STORAGE_ACCOUNT}.table.core.windows.net`,
     tableName,
-    new AzureNamedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, process.env.AZURE_STORAGE_ACCOUNT_KEY)
+    new AzureNamedKeyCredential(process.env.AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY)
   );
 
   await tableClient.createTable(); // Creates only if not exists

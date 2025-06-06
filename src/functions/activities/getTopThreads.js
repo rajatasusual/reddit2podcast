@@ -1,5 +1,6 @@
 const removeMd = require('remove-markdown');
 const snoowrap = require('snoowrap');
+const { getSecretClient } = require('../shared/keyVault');
 
 module.exports.getTopThreads = async function getTopThreads(input, context) {
 
@@ -11,12 +12,19 @@ module.exports.getTopThreads = async function getTopThreads(input, context) {
     }
   }
 
+  const secretClient = getSecretClient();
+
+  const REDDIT_CLIENT_ID = context.env === 'TEST' ? process.env.REDDIT_CLIENT_ID : (await secretClient.getSecret("REDDIT-CLIENT-ID")).value;
+  const REDDIT_CLIENT_SECRET = context.env === 'TEST' ? process.env.REDDIT_CLIENT_SECRET : (await secretClient.getSecret("REDDIT-CLIENT-SECRET")).value;
+  const REDDIT_USERNAME = context.env === 'TEST' ? process.env.REDDIT_USERNAME : (await secretClient.getSecret("REDDIT-USERNAME")).value;
+  const REDDIT_PASSWORD = context.env === 'TEST' ? process.env.REDDIT_PASSWORD : (await secretClient.getSecret("REDDIT-PASSWORD")).value;
+
   const r = new snoowrap({
     userAgent: 'RedditToPodcast v1.0',
-    clientId: process.env.REDDIT_CLIENT_ID,
-    clientSecret: process.env.REDDIT_CLIENT_SECRET,
-    username: process.env.REDDIT_USERNAME,
-    password: process.env.REDDIT_PASSWORD
+    clientId: REDDIT_CLIENT_ID,
+    clientSecret: REDDIT_CLIENT_SECRET,
+    username: REDDIT_USERNAME,
+    password: REDDIT_PASSWORD
   });
 
   context.log(`Fetching top threads from ${input.subreddit}`);
