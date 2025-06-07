@@ -1,6 +1,7 @@
 const df = require('durable-functions');
 
 const {
+  getTopSubreddits,
   getTopThreads,
   moderateThreads,
   generateContentAnalysis,
@@ -9,6 +10,12 @@ const {
   saveEpisodeMetadata,
   generateRSSFeed
 } = require('./activities')
+
+df.app.activity('getTopSubreddits', {
+  handler: async (_, context) => {
+    return await getTopSubreddits(context);
+  }
+});
 
 df.app.activity('getTopThreads', {
   handler: async (input, context) => {

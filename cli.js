@@ -4,6 +4,8 @@ const context = {
   log: console.log,
   env: "TEST",
   skip: {
+    breakafterone: true,
+    subreddits: false,
     threads: false,
     cleanThreads: false,
     contentAnalysis: false,

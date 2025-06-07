@@ -1,3 +1,4 @@
+export { getTopSubreddits } from './getTopSubreddits.js'
 export { getTopThreads } from './getTopThreads.js'
 export { moderateThreads } from './moderateThreads.js'
 export { generateContentAnalysis } from './generateContentAnalysis.js'
