@@ -129,47 +129,41 @@ app.http('episodes', {
       await tableManager.init();
       const tableClient = tableManager.getClient();
 
-      const episodeQuery = request.query.get('episode');
-      context.log(`Querying episodes. Filter: ${episodeQuery || 'all'}`);
+      // Get subreddit from query
+      const subredditQuery = request.query.get('subreddit');
+      context.log(`Querying episodes. Subreddit filter: ${subredditQuery || 'all'}`);
 
       const episodes = [];
 
-      if (episodeQuery) {
-        const entity = await tableClient.getEntity("episodes", episodeQuery).catch(() => null);
-        if (entity) {
-          episodes.push({
-            date: entity.rowKey,
-            subreddit: entity.subreddit,
-            audioUrl: entity.audioUrl,
-            jsonUrl: entity.jsonUrl,
-            ssmlUrl: entity.ssmlUrl,
-            createdOn: entity.createdOn,
-            transcriptsUrl: entity.transcriptsUrl
-          });
-        }
-      } else {
-        const entities = tableClient.listEntities({ queryOptions: { filter: `PartitionKey eq 'episodes'` } });
-        for await (const entity of entities) {
-          episodes.push({
-            date: entity.rowKey,
-            subreddit: entity.subreddit,
-            audioUrl: entity.audioUrl,
-            jsonUrl: entity.jsonUrl,
-            ssmlUrl: entity.ssmlUrl,
-            createdOn: entity.createdOn,
-            summary: entity.summary,
-            transcriptsUrl: entity.transcriptsUrl
-          });
-        }
-        episodes.sort((a, b) => new Date(b.date) - new Date(a.date));
+      // Build filter string for Azure Table query
+      let filter = `PartitionKey eq 'episodes'`;
+      if (subredditQuery) {
+        // Escape single quotes for OData filter
+        const escapedSubreddit = subredditQuery.replace(/'/g, "''");
+        filter += ` and subreddit eq '${escapedSubreddit}'`;
       }
+
+      const entities = tableClient.listEntities({ queryOptions: { filter } });
+      for await (const entity of entities) {
+        episodes.push({
+          title: entity.rowKey,
+          subreddit: entity.subreddit,
+          audioUrl: entity.audioUrl,
+          jsonUrl: entity.jsonUrl,
+          ssmlUrl: entity.ssmlUrl,
+          createdOn: entity.createdOn,
+          summary: entity.summary,
+          transcriptsUrl: entity.transcriptsUrl
+        });
+      }
+      episodes.sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
 
       if (!episodes.length) {
         context.log("No episodes found.");
         return {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ error: `No episodes found for: ${episodeQuery || 'all'}` })
+          body: JSON.stringify({ error: `No episodes found for: ${subredditQuery || 'all'}` })
         };
       }
 
