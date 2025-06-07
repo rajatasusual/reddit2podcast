@@ -37,13 +37,14 @@ const PERPLEXITY_BASE_URL = 'https://api.perplexity.ai/chat/completions';
 const contentAnalysisSchema = {
   type: "object",
   properties: {
-    keyThemes: { type: "array", items: { type: "string" }, maxItems: 5 },
+    keyThemes: { type: "array", items: { type: "string" }, maxItems: 5 , minItems: 1 },
     conversationalHooks: {
       type: "object",
       properties: {
         intro: { type: "string", description: "Ready to use as 2-3 sentence intro to the episode." },
         conclusion: { type: "string", description: "Ready to use as 2-3 sentence conclusion to the episode" },
-      }
+      },
+      required: ["intro", "conclusion"]
     },
     threadAnalysis: {
       type: "array",
@@ -94,14 +95,14 @@ module.exports.generateContentAnalysis = async function analyzeContentWithPerple
     }
   }
 
-  const summary = threads.map((t, idx) => {
-    const preview = t.content.substring(0, 200).replace(/\s+/g, ' ').trim();
-    const comments = (t.comments || []).slice(0, 3).join(' | ');
-    return `Thread ${idx + 1}: "${t.title}" - ${preview}... Top comments: ${comments}`;
-  }).join('\n\n');
+  const contentSummary = threads.map((thread, idx) =>
+    `Thread ${idx + 1}: "${thread.title}" - ${thread.content.substring(0, 200)}... Top comments: ${thread.comments.slice(0, 3).join(' | ')}`
+  ).join('\n\n');
 
-  const messages = [
-    [
+  const body = {
+
+    model: "sonar",
+    messages: [
       {
         role: "system",
         content: `You are an expert podcast producer skilled in voice-driven storytelling. Your task is to analyze Reddit threads and produce structured analysis suitable for high-quality TTS audio production.
@@ -115,7 +116,7 @@ Requirements:
   - Determine **sentiment**, **emotional intensity** (1–10).
   - Recommend a **voice style**, including pitch/rate/style (if applicable).
   - Write a **host commentary** (1-2 sentences, SSML-friendly) summarizing or reacting to the thread.
-  - Add a **transition phrase** to lead into to this thread smoothly.
+  - Add a **transition phrase** to move to this thread smoothly.
 
 Avoid generalities. Be specific, precise, and compatible with TTS output.
 `
@@ -123,45 +124,31 @@ Avoid generalities. Be specific, precise, and compatible with TTS output.
       {
         role: "user",
         content: `Analyze these Reddit threads for podcast production:
-${summary}
+${contentSummary}
                    
 Provide analysis including key themes, conversational hooks, 
 and specific guidance for each thread including sentiment, emotional intensity, 
 suggested voice styles, host commentary, and smooth transitions.
 `
       }
-    ]
-  ];
-
-  const request = async () => {
-    const apiKey = await PerplexityClient.getInstance().getApiKey();
-
-    const body = {
-      model: "sonar",
-      messages,
-      response_format: {
-        type: "json_schema",
-        json_schema: { schema: contentAnalysisSchema }
-      },
-      max_tokens: 2000
-    };
-
-    const res = await fetch(PERPLEXITY_BASE_URL, {
-      method: "POST",
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Perplexity API responded with ${res.status}: ${errorText}`);
-    }
-
-    return res.json();
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: { schema: contentAnalysisSchema }
+    },
+    max_tokens: 2500
   };
+
+  const apiKey = await PerplexityClient.getInstance().getApiKey();
+
+  const request = () => fetch(PERPLEXITY_BASE_URL, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    }
+  }).then(res => res.json());
 
   try {
     const response = await pRetry(request, { retries: 3 });
