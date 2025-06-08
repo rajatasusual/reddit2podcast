@@ -49,25 +49,32 @@ async function performSummarization(documents, type, context) {
     ...(type === 'Extractive' ? { maxSentenceCount: 1 } : { sentenceCount: 1 })
   }];
 
-  const poller = await client.beginAnalyzeBatch(actions, documents, "en");
-
   try {
+    const poller = await client.beginAnalyzeBatch(actions, documents, "en");
     const results = await poller.pollUntilDone();
     let summary = "";
 
     for await (const actionResult of results) {
+      // This is a critical error affecting the entire batch action.
+      // We should still throw this.
+      if (actionResult.error) {
+        const { code, message } = actionResult.error;
+        throw new Error(`Critical batch error (${code}): ${message}`);
+      }
       if (actionResult.kind !== `${type}Summarization`) {
         throw new Error(`Expected ${type.toLowerCase()} summarization, got ${actionResult.kind}`);
       }
-      if (actionResult.error) {
-        const { code, message } = actionResult.error;
-        throw new Error(`Error (${code}): ${message}`);
-      }
+
       for (const result of actionResult.results) {
+        // GRACEFUL HANDLING: Check for an error on a single document.
         if (result.error) {
           const { code, message } = result.error;
-          throw new Error(`Error (${code}): ${message}`);
+          // Log the specific document error and continue to the next one.
+          context.log(`Warning: Could not summarize document ${result.id}. Error (${code}): ${message}`);
+          continue; // Move to the next result without stopping.
         }
+
+        // If no error, process the result as before.
         const resultText = type === 'Extractive'
           ? result.sentences.map(s => s.text).join(".\n")
           : result.summaries.map(s => s.text).join(".\n");
@@ -77,7 +84,8 @@ async function performSummarization(documents, type, context) {
 
     return summary.trim();
   } catch (err) {
-    context.log("Summarization error:", err);
+    // This will catch critical errors (e.g., authentication, network, batch failure).
+    context.log("A critical summarization error occurred:", err);
     throw err;
   }
 }

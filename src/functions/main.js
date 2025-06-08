@@ -44,9 +44,11 @@ async function reddit2podcast(context) {
         }
         context.log(`Podcast generation complete for ${subreddit}`);
 
-        if (context.skip?.breakafterone) break;
+        
       } catch (err) {
         context.log(`Error generating podcast for ${subreddit}:`, err);
+      } finally {
+        if (context.skip?.breakafterone) break;
       }
     }
   } catch (err) {

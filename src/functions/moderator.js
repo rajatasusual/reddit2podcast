@@ -51,7 +51,7 @@ async function moderateThread(thread, context) {
     // Redact if any blocklist match or any category severity > 0
     if (moderationResult.blocklistsMatch && moderationResult.blocklistsMatch.length > 0) return true;
     if (moderationResult.categoriesAnalysis) {
-      return moderationResult.categoriesAnalysis.some(cat => cat.severity > 0);
+      return moderationResult.categoriesAnalysis.some(cat => cat.severity > 2);
     }
     return false;
   }
@@ -66,14 +66,14 @@ async function moderateThread(thread, context) {
     )
   );
 
-  // Redact title if violation
+  // Return empty title if violation
   if (isViolation(titleModerationResult)) {
-    thread.title = 'REDACTED';
+    thread.title = '';
   }
 
-  // Redact comments if violation
+  // Return empty comments if violation
   thread.comments = thread.comments.map((comment, i) =>
-    isViolation(commentsModerationResults[i]) ? 'REDACTED' : comment
+    isViolation(commentsModerationResults[i]) ? '' : comment
   );
 
   return thread;

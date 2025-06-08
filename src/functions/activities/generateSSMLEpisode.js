@@ -109,7 +109,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
     const emph = a.emotionalIntensity > 7 ? "strong" : "moderate";
     parts.push(generateDynamicSSML(`<s><emphasis level=\"${emph}\">Thread ${idx + 1}:</emphasis> ${escapeXml(t.title)}</s>`, voiceConfig.host.name, a.suggestedVoiceStyle || "newscast-casual", a.sentiment || "neutral", a.emotionalIntensity || 5));
 
-    const summary = await abstractiveSummarization([`${t.title} ${t.content} ${t.comments.join('.')}`], context);
+    const summary = await abstractiveSummarization([`${t.title}. ${t.content}. ${t.comments.join('.')}`], context);
     parts.push(generateDynamicSSML(`<s>${escapeXml(summary)}</s><s>${escapeXml(a.hostCommentary || 'This generated quite a discussion.')}</s>`, voiceConfig.host.name, "narration-professional", a.sentiment || "neutral", Math.min(6, (a.emotionalIntensity || 5) + 1)));
 
     if (t.comments?.length) {
