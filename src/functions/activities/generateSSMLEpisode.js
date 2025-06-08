@@ -1,5 +1,5 @@
 const { uploadXmlToBlobStorage } = require('../shared/storageUtil');
-const { extractiveSummarization, abstractiveSummarization } = require('../summarizer');
+const { extractiveSummarization, abstractiveSummarization } = require('../language');
 
 const voiceConfig = {
   host: {

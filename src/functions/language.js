@@ -82,21 +82,53 @@ async function performSummarization(documents, type, context) {
   }
 }
 
+
+async function performEntityExtraction(documents, context) {
+  context.log(`Performing entity extraction`);
+
+  const client = await LanguageClientManager.getInstance().getClient();
+
+  try {
+    const results = await client.analyze("EntityRecognition", documents, "en");
+    let extracted = [];
+
+    for (const result of results) {
+      if (result.error) {
+        const { code, message } = result.error;
+        throw new Error(`Error (${code}): ${message}`);
+      }
+      const entities = result.entities.map(entity => ({
+        text: entity.text,
+        category: entity.category,
+        subCategory: entity.subCategory,
+        confidenceScore: entity.confidenceScore,
+        offset: entity.offset,
+        length: entity.length,
+      }));
+      extracted.push({ id: result.id, entities });
+    }
+    return extracted;
+  } catch (err) {
+    context.log("Entity extraction error:", err);
+    throw err;
+  }
+}
+
 app.http('extractiveSummarization', {
   methods: ['POST'],
   authLevel: 'function',
+  route: 'summarize/extractive',
   handler: async (request, context) => {
-    const { documents } = request.body || {};
-    if (!Array.isArray(documents)) {
-      context.res = { status: 400, body: "Missing or invalid 'documents' array." };
-      return;
+    const body = await request.json() || {};
+    if (!Array.isArray(body.documents)) {
+      return { status: 400, body: "Missing or invalid 'documents' array." };
     }
 
     try {
-      const result = await performSummarization(documents, 'Extractive', context);
-      context.res = { status: 200, body: result };
+      const result = await performSummarization(body.documents, 'Extractive', context);
+      return { status: 200, body: result };
     } catch (err) {
-      context.res = { status: 500, body: err.message };
+      return { status: 500, body: err.message };
     }
   }
 });
@@ -104,18 +136,36 @@ app.http('extractiveSummarization', {
 app.http('abstractiveSummarization', {
   methods: ['POST'],
   authLevel: 'function',
+  route: 'summarize/abstractive',
   handler: async (request, context) => {
-    const { documents } = request.body || {};
-    if (!Array.isArray(documents)) {
-      context.res = { status: 400, body: "Missing or invalid 'documents' array." };
-      return;
+    const body = await request.json() || {};
+    if (!Array.isArray(body.documents)) {
+      return { status: 400, body: "Missing or invalid 'documents' array." };
     }
 
     try {
-      const result = await performSummarization(documents, 'Abstractive', context);
-      context.res = { status: 200, body: result };
+      const result = await performSummarization(body.documents, 'Abstractive', context);
+      return { status: 200, body: result };
     } catch (err) {
-      context.res = { status: 500, body: err.message };
+      return { status: 500, body: err.message };
+    }
+  }
+});
+
+app.http('entityExtraction', {
+  methods: ['POST'],
+  authLevel: 'function',
+  route: 'extract',
+  handler: async (request, context) => {
+    try {
+      const body = await request.json() || {};
+      if (!Array.isArray(body.documents)) {
+       return { status: 400, body: "Missing or invalid 'documents' array." };
+      }
+      const result = await performEntityExtraction(body.documents, context);
+      return { status: 200, body: result };
+    } catch (err) {
+      return { status: 500, body: err.message };
     }
   }
 });
@@ -123,4 +173,5 @@ app.http('abstractiveSummarization', {
 module.exports = {
   abstractiveSummarization: async (docs, ctx) => await performSummarization(docs, 'Abstractive', ctx),
   extractiveSummarization: async (docs, ctx) => await performSummarization(docs, 'Extractive', ctx),
+  entityExtraction: async (docs, ctx) => await performEntityExtraction(docs, ctx),
 };
