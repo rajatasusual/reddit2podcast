@@ -42,7 +42,7 @@ class LanguageClientManager {
 async function performSummarization(documents, type, context) {
   context.log(`Performing ${type} summarization`);
 
-  const client = await LanguageClientManager.getInstance().getClient();
+  const languageClient = await LanguageClientManager.getInstance().getClient();
 
   const actions = [{
     kind: `${type}Summarization`,
@@ -50,7 +50,7 @@ async function performSummarization(documents, type, context) {
   }];
 
   try {
-    const poller = await client.beginAnalyzeBatch(actions, documents, "en");
+    const poller = await languageClient.beginAnalyzeBatch(actions, documents, "en");
     const results = await poller.pollUntilDone();
     let summary = "";
 
@@ -86,38 +86,6 @@ async function performSummarization(documents, type, context) {
   } catch (err) {
     // This will catch critical errors (e.g., authentication, network, batch failure).
     context.log("A critical summarization error occurred:", err);
-    throw err;
-  }
-}
-
-
-async function performEntityExtraction(documents, context) {
-  context.log(`Performing entity extraction`);
-
-  const client = await LanguageClientManager.getInstance().getClient();
-
-  try {
-    const results = await client.analyze("EntityRecognition", documents, "en");
-    let extracted = [];
-
-    for (const result of results) {
-      if (result.error) {
-        const { code, message } = result.error;
-        throw new Error(`Error (${code}): ${message}`);
-      }
-      const entities = result.entities.map(entity => ({
-        text: entity.text,
-        category: entity.category,
-        subCategory: entity.subCategory,
-        confidenceScore: entity.confidenceScore,
-        offset: entity.offset,
-        length: entity.length,
-      }));
-      extracted.push({ id: result.id, entities });
-    }
-    return extracted;
-  } catch (err) {
-    context.log("Entity extraction error:", err);
     throw err;
   }
 }
@@ -160,26 +128,8 @@ app.http('abstractiveSummarization', {
   }
 });
 
-app.http('entityExtraction', {
-  methods: ['POST'],
-  authLevel: 'function',
-  route: 'extract',
-  handler: async (request, context) => {
-    try {
-      const body = await request.json() || {};
-      if (!Array.isArray(body.documents)) {
-       return { status: 400, body: "Missing or invalid 'documents' array." };
-      }
-      const result = await performEntityExtraction(body.documents, context);
-      return { status: 200, body: result };
-    } catch (err) {
-      return { status: 500, body: err.message };
-    }
-  }
-});
-
 module.exports = {
   abstractiveSummarization: async (docs, ctx) => await performSummarization(docs, 'Abstractive', ctx),
   extractiveSummarization: async (docs, ctx) => await performSummarization(docs, 'Extractive', ctx),
-  entityExtraction: async (docs, ctx) => await performEntityExtraction(docs, ctx),
+  LanguageClientManager: LanguageClientManager.getInstance(),
 };
