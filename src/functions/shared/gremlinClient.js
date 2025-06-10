@@ -23,13 +23,14 @@ class CosmosGremlinClient {
 
 	async init() {
 		if (!this.initialized) {
+			const secretClient = getSecretClient();
 			const authenticator = new gremlin.driver.auth.PlainTextSaslAuthenticator(
 				`/dbs/${process.env.COSMOS_DATABASE_ID}/colls/${process.env.COSMOS_CONTAINER_ID}`,
-				process.env.COSMOS_KEY || await getSecretClient().getSecret('COSMOS-KEY').value
+				process.env.COSMOS_KEY || (await secretClient.getSecret('COSMOS-KEY')).value
 			);
 
 			this.client = new gremlin.driver.Client(
-				process.env.COSMOS_GREMLIN_ENDPOINT || await getSecretClient().getSecret('COSMOS-GREMLIN-ENDPOINT').value,
+				process.env.COSMOS_GREMLIN_ENDPOINT || (await secretClient.getSecret('COSMOS-GREMLIN-ENDPOINT')).value,
 				{
 					authenticator,
 					traversalSource: 'g',
