@@ -102,9 +102,21 @@ app.http('extractiveSummarization', {
 
     try {
       const result = await performSummarization(body.documents, 'Extractive', context);
-      return { status: 200, body: result };
+      return {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result)
+      };
     } catch (err) {
-      return { status: 500, body: err.message };
+      return {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: 'Internal server error. Could not summarize content.',
+          message: err.message,
+          stack: err.stack
+        })
+      };
     }
   }
 });
@@ -121,9 +133,21 @@ app.http('abstractiveSummarization', {
 
     try {
       const result = await performSummarization(body.documents, 'Abstractive', context);
-      return { status: 200, body: result };
+      return {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(result)
+      };
     } catch (err) {
-      return { status: 500, body: err.message };
+      return {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: 'Internal server error. Could not summarize content.',
+          message: err.message,
+          stack: err.stack
+        })
+      };
     }
   }
 });

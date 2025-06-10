@@ -108,9 +108,21 @@ app.http('entityExtraction', {
                 return { status: 400, body: "Missing or invalid 'documents' array." };
             }
             const result = await performEntityExtraction(body.documents, context);
-            return { status: 200, body: result };
+            return {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(result)
+            };
         } catch (err) {
-            return { status: 500, body: err.message };
+            return {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    error: 'Internal server error. Could not extract entities.',
+                    message: err.message,
+                    stack: err.stack
+                })
+            };
         }
     }
 });

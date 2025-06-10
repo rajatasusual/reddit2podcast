@@ -188,3 +188,71 @@ app.http('episodes', {
     }
   }
 });
+
+app.http('entitySearch', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'search',
+  handler: async function (request, context) {
+    context.log('Entity search API called');
+
+    const entitySearchService = require('./helper/entitySearchService');
+
+    try {
+      const { searchType, category, query, documentId, maxHops, limit } = await request.json() || {};
+      if (!searchType) {
+        return { status: 400, body: "Missing or invalid 'searchType' property." };
+      }
+      let results;
+
+      switch (searchType) {
+        case 'category':
+          results = await entitySearchService.findEntitiesByCategory(category, parseInt(limit) || 100);
+          break;
+
+        case 'related':
+          results = await entitySearchService.findRelatedEntities(query, parseInt(maxHops) || 2, parseInt(limit) || 50);
+          break;
+
+        case 'document':
+          results = await entitySearchService.findEntitiesInDocument(documentId);
+          break;
+
+        case 'pattern':
+          results = await entitySearchService.searchEntitiesByTextPattern(query, category);
+          break;
+
+        case 'frequent-pairs':
+          results = await entitySearchService.findFrequentEntityPairs(parseInt(limit) || 5);
+          break;
+
+        default:
+          return {
+            status: 400,
+            body: { error: 'Invalid search type. Supported types: category, related, document, pattern, frequent-pairs' }
+          };
+      }
+
+      return {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchType,
+          resultCount: results.length,
+          results: results
+        })
+      };
+
+    } catch (err) {
+      return {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: 'Internal server error. Could not retrieve content.',
+          message: err.message,
+          stack: err.stack
+        })
+      };
+    }
+  }
+});
