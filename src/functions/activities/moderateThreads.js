@@ -12,7 +12,14 @@ module.exports.moderateThreads = async function moderateThreads(input, context) 
     }
   }
   const cleanThreads = await Promise.all(
-    input.threads.map(thread => moderateThread(thread, context))
+    input.threads.map(thread => {
+      try {
+        return moderateThread(thread, context);
+      } catch (err) {
+        context.log(`Error moderating thread: ${err.message}`);
+        return null;
+      }
+    }).filter(t => t !== null)
   );
 
   if(context.env === 'TEST') return {cleanThreads, jsonUrl: ''};
