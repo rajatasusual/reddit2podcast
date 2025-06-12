@@ -115,11 +115,25 @@ app.http('episodes', {
   authLevel: 'anonymous',
   route: 'episodes',
   handler: async (request, context) => {
-    const userInfo = request.params;
+    let userInfo;
+    try {
+      userInfo = await request.json();
+    } catch (err) {
+      context.log('Failed to parse request body.');
+      return { 
+        status: 400, 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Invalid JSON in request body' })
+      };
+    }
 
     if (!userInfo || typeof userInfo !== 'object') {
       context.log('Invalid user info in request body.');
-      return { status: 400, body: 'Bad Request' };
+      return { 
+        status: 400, 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Missing or invalid user info' })
+      };
     }
 
     try {
