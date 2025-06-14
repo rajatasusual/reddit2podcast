@@ -5,6 +5,7 @@ const {
   generateContentAnalysis,
   generateSSMLEpisode,
   synthesizeSSMLChunks,
+  extractEntities
 } = require('./activities')
 
 const fs = require('fs');
@@ -42,9 +43,13 @@ async function reddit2podcast(context) {
           fs.writeFileSync(path.join(dataSubredditDir, `audio.wav`), mergedAudio);
           fs.writeFileSync(path.join(dataSubredditDir, `transcript.json`), JSON.stringify(fullTranscript, null, 2));
         }
-        context.log(`Podcast generation complete for ${subreddit}`);
 
+        context.log(`Podcast generation complete for ${subreddit}`);
         
+        const { entities } = await extractEntities({ threads: cleanThreads, episodeId: subreddit }, context);
+        if (!context.skip?.extractEntities) fs.writeFileSync(path.join(dataSubredditDir, `entities.json`), JSON.stringify(entities, null, 2));
+
+
       } catch (err) {
         context.log(`Error generating podcast for ${subreddit}:`, err);
       } finally {

@@ -8,7 +8,8 @@ const {
   generateSSMLEpisode,
   synthesizeSSMLChunks,
   saveEpisodeMetadata,
-  generateRSSFeed
+  generateRSSFeed,
+  extractEntities
 } = require('./activities')
 
 df.app.activity('getTopSubreddits', {
@@ -50,6 +51,12 @@ df.app.activity('synthesizeSSMLChunks', {
 df.app.activity('saveEpisodeMetadata', {
   handler: async (input, context) => {
     return await saveEpisodeMetadata(input, context);
+  }
+});
+
+df.app.activity('extractEntities', {
+  handler: async (input, context) => {
+    return await extractEntities(input, context);
   }
 });
 

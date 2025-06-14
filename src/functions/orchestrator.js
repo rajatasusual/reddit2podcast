@@ -40,11 +40,14 @@ df.app.orchestration('orchestrator', function* (context) {
       transcriptsUrl
     };
     yield context.df.callActivity("saveEpisodeMetadata", metadata);
+
+    // 7. Extract entities
+    yield context.df.callActivity("extractEntities", { threads: cleanThreads, episodeId });
     
     results.push({ subreddit, audioUrl });
   }
 
-  // 7. Generate RSS feed after all subreddits
+  // 8. Generate RSS feed after all subreddits
   yield context.df.callActivity("generateRSSFeed");
 
   return {

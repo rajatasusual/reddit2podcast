@@ -10,7 +10,8 @@ const context = {
     cleanThreads: false,
     contentAnalysis: false,
     ssml: false,
-    synthesis: false
+    synthesis: false,
+    extractEntities: false
   }
 };
 
