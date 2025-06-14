@@ -126,7 +126,7 @@ app.http('entityExtraction', {
                 body: JSON.stringify(result)
             };
         } catch (err) {
-            context.log.error("Function Error:", { message: err.message, stack: err.stack });
+            context.log("Function Error:", { message: err.message, stack: err.stack });
             return {
                 status: 500,
                 headers: { 'Content-Type': 'application/json' },

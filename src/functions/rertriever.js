@@ -120,8 +120,8 @@ app.http('episodes', {
       userInfo = await request.json();
     } catch (err) {
       context.log('Failed to parse request body.');
-      return { 
-        status: 400, 
+      return {
+        status: 400,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: 'Invalid JSON in request body' })
       };
@@ -129,8 +129,8 @@ app.http('episodes', {
 
     if (!userInfo || typeof userInfo !== 'object') {
       context.log('Invalid user info in request body.');
-      return { 
-        status: 400, 
+      return {
+        status: 400,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: 'Missing or invalid user info' })
       };
@@ -205,7 +205,7 @@ app.http('episodes', {
 
 app.http('entitySearch', {
   methods: ['POST'],
-  authLevel: 'anonymous',
+  authLevel: 'anonymous', // Or 'function' for key-based auth
   route: 'search',
   handler: async function (request, context) {
     context.log('Entity search API called');
@@ -213,58 +213,84 @@ app.http('entitySearch', {
     const entitySearchService = require('./helper/entitySearchService');
 
     try {
-      const { searchType, category, query, documentId, maxHops, limit } = await request.json() || {};
+      const body = await request.json() || {};
+      const { searchType, category, query, entityTexts, documentId, maxHops, limit, minOccurrences } = body;
+
+      // --- Centralized Input Validation ---
       if (!searchType) {
-        return { status: 400, body: "Missing or invalid 'searchType' property." };
+        return { status: 400, body: JSON.stringify({ error: "Missing required 'searchType' property." }) };
       }
+
       let results;
 
+      // --- API Routing Logic ---
       switch (searchType) {
         case 'category':
+          if (!category) return { status: 400, body: JSON.stringify({ error: "Missing 'category' parameter for this search type." }) };
           results = await entitySearchService.findEntitiesByCategory(category, parseInt(limit) || 100);
           break;
 
         case 'related':
+          if (!query) return { status: 400, body: JSON.stringify({ error: "Missing 'query' parameter for this search type." }) };
           results = await entitySearchService.findRelatedEntities(query, parseInt(maxHops) || 2, parseInt(limit) || 50);
           break;
 
-        case 'document':
+        case 'entities_in_document':
+          if (!documentId) return { status: 400, body: JSON.stringify({ error: "Missing 'documentId' parameter for this search type." }) };
           results = await entitySearchService.findEntitiesInDocument(documentId);
           break;
 
-        case 'pattern':
-          results = await entitySearchService.searchEntitiesByTextPattern(query, category);
+        case 'documents_for_entity':
+          if (!query) return { status: 400, body: JSON.stringify({ error: "Missing 'query' parameter for this search type." }) };
+          results = await entitySearchService.findDocumentsForEntity(query, parseInt(limit) || 50);
           break;
 
-        case 'frequent-pairs':
-          results = await entitySearchService.findFrequentEntityPairs(parseInt(limit) || 5);
+        case 'pattern':
+          if (!query) return { status: 400, body: JSON.stringify({ error: "Missing 'query' parameter for this search type." }) };
+          results = await entitySearchService.searchEntitiesByTextPattern(query, category); // category is optional here
+          break;
+
+        case 'frequent_co_occurring':
+          results = await entitySearchService.findFrequentCoOccurringEntities(parseInt(minOccurrences) || 5, parseInt(limit) || 20);
+          break;
+
+        case 'common_connections':
+          if (!entityTexts || !Array.isArray(entityTexts) || entityTexts.length < 2) {
+            return { status: 400, body: JSON.stringify({ error: "Missing or invalid 'entityTexts' parameter. It must be an array of at least two strings." }) };
+          }
+          results = await entitySearchService.findCommonConnections(entityTexts, parseInt(limit) || 10);
           break;
 
         default:
+          const supportedTypes = [
+            'category', 'related', 'entities_in_document', 'documents_for_entity',
+            'pattern', 'frequent_co_occurring', 'common_connections'
+          ];
           return {
             status: 400,
-            body: { error: 'Invalid search type. Supported types: category, related, document, pattern, frequent-pairs' }
+            body: JSON.stringify({ error: `Invalid search type. Supported types are: ${supportedTypes.join(', ')}` })
           };
       }
 
+      // --- Success Response ---
       return {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           searchType,
           resultCount: results.length,
-          results: results
+          results
         })
       };
 
     } catch (err) {
+      // --- Secure Error Handling ---
+      context.log('Entity Search Function Error:', { message: err.message, stack: err.stack });
       return {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          error: 'Internal server error. Could not retrieve content.',
-          message: err.message,
-          stack: err.stack
+          error: 'An internal server error occurred while processing the search request.'
         })
       };
     }
