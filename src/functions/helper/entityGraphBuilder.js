@@ -43,7 +43,7 @@ class EntityGraphBuilder {
   }
 
   // 2. Upsert a document vertex
-  async upsertDocumentVertex(documentId) {
+  async upsertDocumentVertex(documentId, metadata) {
     const query = `g.V('${documentId}').
       fold().
       coalesce(
@@ -52,6 +52,7 @@ class EntityGraphBuilder {
           property(id, '${documentId}').
           property('processedAt', '${new Date().toISOString()}').
           property('category', 'document').
+          ${Object.keys(metadata).map(key => `property('${key}', '${this.escapeString(metadata[key])}').`).join('\n          ')}
           property('partitionKey', 'document')
       )`;
     await this.gremlinClient.executeQuery(query);
@@ -59,13 +60,15 @@ class EntityGraphBuilder {
 
   // 3. Create the 'appears_in' edge with contextual data
   async createAppearanceEdge(entity, canonicalEntityId, documentId) {
-    const edgeQuery = `g.V('${canonicalEntityId}').
-      addE('appears_in').
-      to(g.V('${documentId}')).
-      property('confidenceScore', ${entity.confidenceScore}).
-      property('offset', ${entity.offset}).
-      property('length', ${entity.length})
-    `;
+    // This query now ensures the 'appears_in' edge is not duplicated.
+    const edgeQuery = `
+      g.V('${canonicalEntityId}')
+       .coalesce(
+         __.outE('appears_in').where(inV().hasId('${documentId}')),
+         __.addE('appears_in').to(g.V('${documentId}'))
+           .property('confidenceScore', ${entity.confidenceScore})
+           .property('createdAt', '${new Date().toISOString()}')
+       )`;
     await this.gremlinClient.executeQuery(edgeQuery);
   }
 
@@ -73,22 +76,24 @@ class EntityGraphBuilder {
   async createSemanticRelationship(entity1, entity2, documentId) {
     const entity1Id = this.generateEntityId(entity1);
     const entity2Id = this.generateEntityId(entity2);
-
     const relationshipType = this.determineRelationshipType(entity1, entity2);
-    if (relationshipType === 'co_occurs') return; // Optionally skip generic relationships
 
-    const edgeQuery = `g.V('${entity1Id}').
-        outE('${relationshipType}').where(inV().hasId('${entity2Id}')).
-        fold().
-        coalesce(
-          unfold(),
-          addE('${relationshipType}').to(g.V('${entity2Id}')).property('firstSeenIn', '${documentId}')
-        )`;
+    if (relationshipType === 'co_occurs') return; // Skip generic relationships if desired
+
+    // This is the most robust pattern for upserting an edge.
+    // It maintains context using .as() and ensures the creation step only runs if the edge doesn't exist.
+    const edgeQuery = `
+      g.V('${entity1Id}').as('a')
+       .coalesce(
+         __.outE('${relationshipType}').where(inV().hasId('${entity2Id}')),
+         __.addE('${relationshipType}').from('a').to(g.V('${entity2Id}'))
+           .property('firstSeenIn', '${documentId}')
+           .property('firstSeenAt', '${new Date().toISOString()}')
+       )`;
     await this.gremlinClient.executeQuery(edgeQuery);
   }
 
   generateEntityId(entity) {
-    // Create unique ID combining document, entity text, and position
     const textHash = Buffer.from(entity.text.toLowerCase()).toString('base64');
     return `${textHash}`;
   }

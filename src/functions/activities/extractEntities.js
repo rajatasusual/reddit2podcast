@@ -11,24 +11,35 @@ module.exports.extractEntities = async function extractEntities(input, context) 
       return { entities: entitiesFile };
     }
   }
-  const entities = await Promise.all(
-    input.threads.map(thread => {
-      try {
-        const document = {
-          id: input.episodeId,
-          content: thread.comments
-        }
-        return entityExtraction(document, context);
-      } catch (err) {
-        context.log(`Error extracting entities from thread: ${err.message}`);
-        return null;
+
+  const episodeId = input.episodeId;
+
+  console.log(`Extracting entities for episode: ${episodeId}`);
+
+  const promises = input.threads.map(thread => [
+    entityExtraction({
+      content: [thread.title + thread.content],
+      id: episodeId,
+      metadata: {
+        title: thread.title,
+        permalink: thread.permalink,
+        url: thread.url,
+        author: thread.author
       }
-    }).filter(t => t !== null)
-  );
+    }, context),
+    entityExtraction({
+      content: thread.comments,
+      id: episodeId,
+    }, context)
+  ]);
 
-  if(context.env === 'TEST') return {entities, jsonUrl: ''};
-   
-  const jsonUrl = await uploadJsonToBlobStorage(entities, `json/episode-${input.episodeId}.entities.json`);
+  const entities = await Promise.all(promises.flat());
 
-  return {entities, jsonUrl};
+  console.log(`Processed entities for episode: ${episodeId}`);
+
+  if (context.env === 'TEST') return { entities, jsonUrl: '' };
+
+  const jsonUrl = await uploadJsonToBlobStorage(entities, `json/episode-${episodeId}.entities.json`);
+
+  return { entities, jsonUrl };
 }
