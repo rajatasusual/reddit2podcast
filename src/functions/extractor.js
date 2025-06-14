@@ -36,37 +36,47 @@ class EntitiesManager {
 }
 
 async function updateEntitiesInGraph(entities, documentId, context) {
-    try {
-        const graphBuilder = await (EntitiesManager.getInstance()).getGraphBuilder();
-        // Create entity vertices
-        for (const entity of entities) {
-            if (entity.confidenceScore >= 0.7) { // Only store high-confidence entities
-                await graphBuilder.upsertEntityVertex(entity, documentId);
+    const graphBuilder = await EntitiesManager.getInstance().getGraphBuilder();
+
+    // 1. Create a vertex for the document itself
+    await graphBuilder.upsertDocumentVertex(documentId);
+    context.log(`Upserted document vertex for: ${documentId}`);
+
+    const highConfidenceEntities = entities.filter(e => e.confidenceScore >= 0.7);
+
+    // 2. Process each high-confidence entity
+    for (const entity of highConfidenceEntities) {
+        // Create the canonical vertex for the entity (e.g., "Microsoft")
+        const canonicalEntityId = await graphBuilder.upsertCanonicalEntity(entity);
+
+        // Link this specific occurrence to the document
+        await graphBuilder.createAppearanceEdge(entity, canonicalEntityId, documentId);
+    }
+    context.log(`Processed ${highConfidenceEntities.length} entity appearances for document ${documentId}`);
+
+    // 3. Create semantic relationships between the canonical entities
+    if (highConfidenceEntities.length > 1) {
+        for (let i = 0; i < highConfidenceEntities.length; i++) {
+            for (let j = i + 1; j < highConfidenceEntities.length; j++) {
+                await graphBuilder.createSemanticRelationship(highConfidenceEntities[i], highConfidenceEntities[j], documentId);
             }
         }
-
-        context.log(`Created ${entities.length} entity vertices`);
-
-        // Create relationships between entities
-        const { highConfidenceEntities, relationships } = await graphBuilder.createRelationshipsBetweenEntities(entities, documentId);
-
-        context.log(`Created ${relationships.length} relationships between ${highConfidenceEntities.length} high-confidence entities`);
-
-        return { highConfidenceEntities, relationships };
-
-    } catch (error) {
-        context.log(`Error processing entities for document ${documentId}:`, error);
-        throw error;
+        context.log(`Updated semantic relationships based on document ${documentId}`);
     }
+
+    return {
+        highConfidenceEntities
+    };
 }
 
-async function performEntityExtraction(documents, context) {
+async function performEntityExtraction(document, context) {
     context.log(`Performing entity extraction with graph database integration`);
+
+    let extracted = [];
 
     try {
         const languageClient = await (EntitiesManager.getInstance()).getLanguageClient();
-        const results = await languageClient.analyze("EntityRecognition", documents, "en");
-        let extracted = [];
+        const results = await languageClient.analyze("EntityRecognition", document.content, "en");
 
         for (const result of results) {
             if (result.error) {
@@ -83,17 +93,19 @@ async function performEntityExtraction(documents, context) {
                 length: entity.length,
             }));
 
+            const id = document.id || result.id;
             // Store entities in graph database
-            const { highConfidenceEntities, relationships } = await updateEntitiesInGraph(entities, result.id, context);
+            const { highConfidenceEntities } = await updateEntitiesInGraph(entities, id, context);
 
-            extracted.push({ id: result.id, entities: highConfidenceEntities, relationships });
+            extracted.push({ id, entities: highConfidenceEntities });
         }
-
-        return extracted;
 
     } catch (err) {
         context.log("Entity extraction or graph processing error:", err);
         throw err;
+    } finally {
+        context.log("Entity extraction completed");
+        return extracted;
     }
 }
 
@@ -104,23 +116,22 @@ app.http('entityExtraction', {
     handler: async (request, context) => {
         try {
             const body = await request.json() || {};
-            if (!Array.isArray(body.documents)) {
+            if (body.document && !Array.isArray(body.document.content)) {
                 return { status: 400, body: "Missing or invalid 'documents' array." };
             }
-            const result = await performEntityExtraction(body.documents, context);
+            const result = await performEntityExtraction(body.document, context);
             return {
                 status: 200,
-                headers: { 'Content-Type': 'application/json' }, 
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(result)
             };
         } catch (err) {
+            context.log.error("Function Error:", { message: err.message, stack: err.stack });
             return {
                 status: 500,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    error: 'Internal server error. Could not extract entities.',
-                    message: err.message,
-                    stack: err.stack
+                    error: 'An internal server error occurred.'
                 })
             };
         }

@@ -48,10 +48,10 @@ class CosmosGremlinClient {
 		return this.client;
 	}
 
-	async executeQuery(query) {
+	async executeQuery(query, bindings = {}) {
 		const client = await this.getClient();
 		try {
-			const result = await client.submit(query);
+			const result = await client.submit(query, bindings);
 			return result._items;
 		} catch (error) {
 			console.error('Gremlin query execution error:', error);

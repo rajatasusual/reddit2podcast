@@ -22,8 +22,9 @@ class EntityGraphBuilder {
     return this.gremlinClient;
   }
 
-  async upsertEntityVertex(entity, documentId, sourceText = '') {
-    const vertexId = this.generateEntityId(entity, documentId);
+  // 1. Upsert a canonical entity vertex (no document-specific info)
+  async upsertCanonicalEntity(entity) {
+    const vertexId = this.generateEntityId(entity);
     const partitionKey = entity.category.toLowerCase();
 
     const query = `g.V('${vertexId}').
@@ -31,71 +32,69 @@ class EntityGraphBuilder {
       coalesce(
         unfold(),
         addV('entity').
-            property(id, '${vertexId}').
-            property('text', '${this.escapeString(entity.text)}').
-            property('category', '${entity.category}').
-            property('subCategory', '${entity.subCategory || ''}').
-            property('confidenceScore', ${entity.confidenceScore}).
-            property('documentId', '${documentId}').
-            property('offset', ${entity.offset}).
-            property('length', ${entity.length}).
-            property('sourceText', '${this.escapeString(sourceText)}').
-            property('createdAt', '${new Date().toISOString()}').
-            property('partitionKey', '${partitionKey}')
+          property(id, '${vertexId}').
+          property('text', '${this.escapeString(entity.text)}').
+          property('category', '${entity.category}').
+          property('subCategory', '${entity.subCategory || ''}').
+          property('partitionKey', '${partitionKey}')
       )`;
-
-    return await this.gremlinClient.executeQuery(query);
+    await this.gremlinClient.executeQuery(query);
+    return vertexId;
   }
 
-  generateEntityId(entity, documentId) {
+  // 2. Upsert a document vertex
+  async upsertDocumentVertex(documentId) {
+    const query = `g.V('${documentId}').
+      fold().
+      coalesce(
+        unfold(),
+        addV('document').
+          property(id, '${documentId}').
+          property('processedAt', '${new Date().toISOString()}').
+          property('category', 'document').
+          property('partitionKey', 'document')
+      )`;
+    await this.gremlinClient.executeQuery(query);
+  }
+
+  // 3. Create the 'appears_in' edge with contextual data
+  async createAppearanceEdge(entity, canonicalEntityId, documentId) {
+    const edgeQuery = `g.V('${canonicalEntityId}').
+      addE('appears_in').
+      to(g.V('${documentId}')).
+      property('confidenceScore', ${entity.confidenceScore}).
+      property('offset', ${entity.offset}).
+      property('length', ${entity.length})
+    `;
+    await this.gremlinClient.executeQuery(edgeQuery);
+  }
+
+  // 4. Relationships are now between canonical entities
+  async createSemanticRelationship(entity1, entity2, documentId) {
+    const entity1Id = this.generateEntityId(entity1);
+    const entity2Id = this.generateEntityId(entity2);
+
+    const relationshipType = this.determineRelationshipType(entity1, entity2);
+    if (relationshipType === 'co_occurs') return; // Optionally skip generic relationships
+
+    const edgeQuery = `g.V('${entity1Id}').
+        outE('${relationshipType}').where(inV().hasId('${entity2Id}')).
+        fold().
+        coalesce(
+          unfold(),
+          addE('${relationshipType}').to(g.V('${entity2Id}')).property('firstSeenIn', '${documentId}')
+        )`;
+    await this.gremlinClient.executeQuery(edgeQuery);
+  }
+
+  generateEntityId(entity) {
     // Create unique ID combining document, entity text, and position
     const textHash = Buffer.from(entity.text.toLowerCase()).toString('base64');
-    return `${documentId}_${textHash}_${entity.offset}`;
+    return `${textHash}`;
   }
 
   escapeString(str) {
     return str.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
-  }
-
-  async createDocumentRelationships(entities, documentId) {
-    const relationships = [];
-
-    // Create co-occurrence relationships between entities in the same document
-    for (let i = 0; i < entities.length; i++) {
-      for (let j = i + 1; j < entities.length; j++) {
-        const entity1Id = this.generateEntityId(entities[i], documentId);
-        const entity2Id = this.generateEntityId(entities[j], documentId);
-
-        const proximity = Math.abs(entities[i].offset - entities[j].offset);
-        const relationshipType = this.determineRelationshipType(entities[i], entities[j]);
-
-        const edgeQuery = `g.V('${entity1Id}')
-        .addE('${relationshipType}')
-        .to(g.V('${entity2Id}'))
-        .property('documentId', '${documentId}')
-        .property('proximity', ${proximity})
-        .property('confidenceProduct', ${entities[i].confidenceScore * entities[j].confidenceScore})
-        .property('createdAt', '${new Date().toISOString()}')`;
-
-        relationships.push(edgeQuery);
-      }
-    }
-
-    return relationships;
-  }
-
-  async createRelationshipsBetweenEntities(entities, documentId) {
-    const highConfidenceEntities = entities.filter(e => e.confidenceScore >= 0.7);
-    if (highConfidenceEntities.length > 1) {
-      const relationships = await this.createDocumentRelationships(highConfidenceEntities, documentId);
-
-      for (const relationshipQuery of relationships) {
-        await this.gremlinClient.executeQuery(relationshipQuery);
-      }
-
-      return { highConfidenceEntities, relationships };
-    }
-
   }
 
   determineRelationshipType(entity1, entity2) {
