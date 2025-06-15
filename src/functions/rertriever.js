@@ -203,6 +203,28 @@ app.http('episodes', {
   }
 });
 
+app.http('graphQuery', {
+  methods: ['POST'],
+  handler: async (request, context) => {
+
+    const body = await request.json() || {};
+    const { query, naturalLanguage } = body;
+    
+    try {
+      const service = require('./helper/entitySearchService');
+      const result = naturalLanguage 
+        ? await service.naturalLanguageQuery(query)
+        : await service.executeCustomQuery(query);
+      
+      return { status: 200, body: JSON.stringify(result) };
+    } catch (error) {
+      context.log("Query Error:", error);
+      return { status: 500, body: "Query processing failed" };
+    }
+  }
+});
+
+
 app.http('entitySearch', {
   methods: ['POST'],
   authLevel: 'anonymous', // Or 'function' for key-based auth

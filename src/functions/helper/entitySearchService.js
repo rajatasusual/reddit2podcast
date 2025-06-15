@@ -1,5 +1,8 @@
 // entitySearchService.js
 const cosmosClient = require('../shared/gremlinClient');
+const nlqProcessor = require('./nlqProcessor');
+const NLQProcessor = require('./nlqProcessor');
+const QueryBuilder = require('./queryBuilder');
 
 class EntitySearchService {
   // ... (Singleton getInstance and constructor are correct)
@@ -85,22 +88,14 @@ class EntitySearchService {
         .select(keys)
         .limit(l)
         .valueMap(true)`;
-    const bindings = { 
-        sourceEntities: entityTexts, 
-        numSources: entityTexts.length,
-        l: limit 
+    const bindings = {
+      sourceEntities: entityTexts,
+      numSources: entityTexts.length,
+      l: limit
     };
     return await cosmosClient.executeQuery(query, bindings);
   }
-  
-  // ====================================================================
-  // NEW AND ENHANCED FUNCTIONS FOR THE CANONICAL GRAPH
-  // ====================================================================
 
-  /**
-   * NEW: Finds all documents where a specific entity appears.
-   * Purpose: The inverse of findEntitiesInDocument (e.g., find all articles mentioning 'Azure').
-   */
   async findDocumentsForEntity(entityText, limit = 50) {
     const query = `g.V().has('entity', 'text', entityTxt)
       .out('appears_in')
@@ -110,11 +105,6 @@ class EntitySearchService {
     return await cosmosClient.executeQuery(query, bindings);
   }
 
-  /**
-   * NEW & REFINED: Finds pairs of entities that frequently appear in the same documents.
-   * This is the correct implementation of co-occurrence for the canonical model.
-   * Purpose: Discover implicit relationships (e.g., 'Person A' and 'Project X' are often mentioned together).
-   */
   async findFrequentCoOccurringEntities(minOccurrences = 5, limit = 20) {
     const query = `g.V().hasLabel('entity').as('a')
       .out('appears_in').in('appears_in')
@@ -128,9 +118,24 @@ class EntitySearchService {
       .project('pair', 'coOccurrences')
         .by(select(keys))
         .by(select(values))`;
-    
+
     const bindings = { min: minOccurrences, l: limit };
     return await cosmosClient.executeQuery(query, bindings);
+  }
+
+  async naturalLanguageQuery(queryText) {
+    const processor = require('./nlqProcessor');
+    const builder = new QueryBuilder();
+
+    const analysis = await processor.parseQuery(queryText);
+    const gremlinQuery = builder.buildFromAnalysis(analysis);
+
+    return this._executeAdvancedQuery(gremlinQuery);
+  }
+
+  async _executeAdvancedQuery(query) {
+    const bindings = {};
+    return cosmosClient.executeQuery(query, bindings);
   }
 }
 
