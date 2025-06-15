@@ -205,16 +205,18 @@ app.http('episodes', {
 
 app.http('graphQuery', {
   methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'query',
   handler: async (request, context) => {
-
-    const body = await request.json() || {};
-    const { query, naturalLanguage } = body;
+    const query = request.query?.get('q');
     
+    if (!query) {
+      return { status: 400, body: "Missing or invalid 'q' parameter." };
+    }
+
     try {
       const service = require('./helper/entitySearchService');
-      const result = naturalLanguage 
-        ? await service.naturalLanguageQuery(query)
-        : await service.executeCustomQuery(query);
+      const result = await service.findDocumentsForQuery(query);
       
       return { status: 200, body: JSON.stringify(result) };
     } catch (error) {

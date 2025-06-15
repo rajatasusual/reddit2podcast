@@ -1,5 +1,4 @@
 // entitySearchService.js
-const { LanguageClientManager } = require('../language');
 const cosmosClient = require('../shared/gremlinClient');
 const QueryBuilder = require('./queryBuilder');
 
@@ -122,18 +121,11 @@ class EntitySearchService {
     return await cosmosClient.executeQuery(query, bindings);
   }
 
-  async naturalLanguageQuery(queryText) {
-    const builder = new QueryBuilder();
+  async findDocumentsForQuery(query) {
+    const queryBuilder = new QueryBuilder();
+    const gremlinQuery = queryBuilder.buildQueryFromKeywordString(query);
 
-    const entities = await LanguageClientManager.parseQuery(queryText);
-    const gremlinQuery = builder.buildEpisodeSearchQuery(entities);
-
-    return this._executeAdvancedQuery(gremlinQuery);
-  }
-
-  async _executeAdvancedQuery(query) {
-    const bindings = {};
-    return cosmosClient.executeQuery(query, bindings);
+    return await cosmosClient.executeQuery(gremlinQuery);
   }
 }
 
