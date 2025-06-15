@@ -19,6 +19,8 @@
     "gremlin": "^3.4.13",
     "microsoft-cognitiveservices-speech-sdk": "^1.44.0",
     "mkdirp": "^3.0.1",
+    "moo": "^0.5.2",
+    "nearley": "^2.20.1",
     "p-retry": "^6.2.1",
     "remove-markdown": "^0.6.2",
     "snoowrap": "^1.23.0"

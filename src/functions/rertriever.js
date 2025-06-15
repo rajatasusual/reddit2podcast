@@ -203,6 +203,30 @@ app.http('episodes', {
   }
 });
 
+app.http('graphQuery', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'query',
+  handler: async (request, context) => {
+    const query = request.query?.get('q');
+    
+    if (!query) {
+      return { status: 400, body: "Missing or invalid 'q' parameter." };
+    }
+
+    try {
+      const service = require('./helper/entitySearchService');
+      const result = await service.findDocumentsForQuery(query);
+      
+      return { status: 200, body: JSON.stringify(result) };
+    } catch (error) {
+      context.log("Query Error:", error);
+      return { status: 500, body: "Query processing failed" };
+    }
+  }
+});
+
+
 app.http('entitySearch', {
   methods: ['POST'],
   authLevel: 'anonymous', // Or 'function' for key-based auth

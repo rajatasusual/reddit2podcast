@@ -135,7 +135,7 @@ app.http('abstractiveSummarization', {
       const result = await performSummarization(body.documents, 'Abstractive', context);
       return {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }, 
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(result)
       };
     } catch (err) {
