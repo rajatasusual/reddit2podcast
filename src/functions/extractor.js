@@ -35,31 +35,29 @@ class EntitiesManager {
     }
 }
 
-async function updateEntitiesInGraph(entities, documentId, context) {
-    const highConfidenceEntities = entities.filter(e => e.confidenceScore >= 0.7);
-    
+async function updateEntitiesInGraph(document, context) {
+    const highConfidenceEntities = document.entities.filter(e => e.confidenceScore >= 0.7);
+
     if (context.env === 'TEST') return { highConfidenceEntities };
 
     const graphBuilder = await EntitiesManager.getInstance().getGraphBuilder();
 
     // 1. Create a vertex for the document itself
-    await graphBuilder.upsertDocumentVertex(documentId);
-
+    await graphBuilder.upsertDocumentVertex(document.id, document.metadata);
 
     // 2. Process each high-confidence entity
     for (const entity of highConfidenceEntities) {
-        // Create the canonical vertex for the entity (e.g., "Microsoft")
         const canonicalEntityId = await graphBuilder.upsertCanonicalEntity(entity);
 
         // Link this specific occurrence to the document
-        await graphBuilder.createAppearanceEdge(entity, canonicalEntityId, documentId);
+        await graphBuilder.createAppearanceEdge(entity, canonicalEntityId, document.id);
     }
 
     // 3. Create semantic relationships between the canonical entities
     if (highConfidenceEntities.length > 1) {
         for (let i = 0; i < highConfidenceEntities.length; i++) {
             for (let j = i + 1; j < highConfidenceEntities.length; j++) {
-                await graphBuilder.createSemanticRelationship(highConfidenceEntities[i], highConfidenceEntities[j], documentId);
+                await graphBuilder.createSemanticRelationship(highConfidenceEntities[i], highConfidenceEntities[j], document.id);
             }
         }
     }
@@ -70,8 +68,6 @@ async function updateEntitiesInGraph(entities, documentId, context) {
 }
 
 async function performEntityExtraction(document, context) {
-    context.log(`Performing entity extraction for document ${document.id}`);
-
     let extracted = [];
 
     try {
@@ -80,22 +76,23 @@ async function performEntityExtraction(document, context) {
 
         for (const result of results) {
             if (result.error) {
-                const { code, message } = result.error;
-                throw new Error(`Error (${code}): ${message}`);
+                continue;
             }
 
             const entities = result.entities.map(entity => ({
                 text: entity.text,
                 category: entity.category,
                 subCategory: entity.subCategory,
-                confidenceScore: entity.confidenceScore,
-                offset: entity.offset,
-                length: entity.length,
+                confidenceScore: entity.confidenceScore
             }));
 
             const id = document.id || result.id;
             // Store entities in graph database
-            const { highConfidenceEntities } = await updateEntitiesInGraph(entities, id, context);
+            const { highConfidenceEntities } = await updateEntitiesInGraph({
+                entities,
+                id,
+                metadata: document.metadata ?? {}
+            }, context);
             extracted.push({ id, entities: highConfidenceEntities });
         }
 
@@ -103,7 +100,6 @@ async function performEntityExtraction(document, context) {
         context.log("Entity extraction or graph processing error:", err);
         throw err;
     } finally {
-        context.log("Entity extraction completed for document", document.id);
         return extracted;
     }
 }
