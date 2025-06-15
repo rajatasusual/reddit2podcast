@@ -1,7 +1,6 @@
 // entitySearchService.js
+const { LanguageClientManager } = require('../language');
 const cosmosClient = require('../shared/gremlinClient');
-const nlqProcessor = require('./nlqProcessor');
-const NLQProcessor = require('./nlqProcessor');
 const QueryBuilder = require('./queryBuilder');
 
 class EntitySearchService {
@@ -124,11 +123,10 @@ class EntitySearchService {
   }
 
   async naturalLanguageQuery(queryText) {
-    const processor = require('./nlqProcessor');
     const builder = new QueryBuilder();
 
-    const analysis = await processor.parseQuery(queryText);
-    const gremlinQuery = builder.buildFromAnalysis(analysis);
+    const entities = await LanguageClientManager.parseQuery(queryText);
+    const gremlinQuery = builder.buildEpisodeSearchQuery(entities);
 
     return this._executeAdvancedQuery(gremlinQuery);
   }

@@ -37,6 +37,22 @@ class LanguageClientManager {
     await this.init();
     return this.client;
   }
+
+  async parseQuery(naturalQuery) {
+
+    const results = await (await this.getClient()).analyze("EntityRecognition", [naturalQuery], "en");
+    return this._normalizeEntities(results[0].entities);
+  }
+
+  _normalizeEntities(entities) {
+    return entities.map(e => ({
+      text: e.text,
+      category: e.category,
+      subCategory: e.subCategory,
+      confidence: e.confidenceScore,
+      offset: e.offset
+    }));
+  }
 }
 
 async function performSummarization(documents, type, context) {
@@ -135,7 +151,7 @@ app.http('abstractiveSummarization', {
       const result = await performSummarization(body.documents, 'Abstractive', context);
       return {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }, 
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(result)
       };
     } catch (err) {
