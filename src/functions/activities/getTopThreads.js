@@ -6,7 +6,7 @@ module.exports.getTopThreads = async function getTopThreads(input, context) {
 
   if (context.env === 'TEST' && context.skip?.threads) {
     const path = require('path');
-    const threadsFile = require(path.join(process.cwd(), 'src/data/threads.json'));
+    const threadsFile = require(path.join(process.cwd(), `src/data/${input.subreddit}/threads.json`));
     if (threadsFile?.length > 0) {
       return { threads: threadsFile };
     }

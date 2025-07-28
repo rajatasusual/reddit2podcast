@@ -72,7 +72,7 @@ module.exports.generateSSMLEpisode = async function generateSSMLEpisode(input, c
   if (context.env === 'TEST' && context.skip?.ssml) {
     const path = require('path');
     const fs = require('fs');
-    const ssmlChunksFile = fs.readFileSync(path.join(process.cwd(), 'src/data/ssmlChunks.txt'), 'utf-8');
+    const ssmlChunksFile = fs.readFileSync(path.join(process.cwd(), `src/data/${input.subreddit}/ssmlChunks.txt`), 'utf-8');
     if (ssmlChunksFile) {
       const ssmlChunks = ssmlChunksFile.split('{{CHUNKS}}');
       return { ssmlChunks };

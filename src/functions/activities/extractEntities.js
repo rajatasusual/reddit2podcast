@@ -5,7 +5,7 @@ module.exports.extractEntities = async function extractEntities(input, context) 
 
   if (context.env === 'TEST' && context.skip?.extractEntities) {
     const path = require('path');
-    const entitiesFile = require(path.join(process.cwd(), 'src/data/entities.json'));
+    const entitiesFile = require(path.join(process.cwd(), `src/data/${input.subreddit}/entities.json`));
     //return if threads is not empty
     if (entitiesFile?.length > 0) {
       return { entities: entitiesFile };

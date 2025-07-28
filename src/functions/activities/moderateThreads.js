@@ -5,7 +5,7 @@ module.exports.moderateThreads = async function moderateThreads(input, context) 
 
   if (context.env === 'TEST' && context.skip?.cleanThreads) {
     const path = require('path');
-    const threadsFile = require(path.join(process.cwd(), 'src/data/cleanThreads.json'));
+    const threadsFile = require(path.join(process.cwd(), `src/data/${input.subreddit}/cleanThreads.json`));
     //return if threads is not empty
     if (threadsFile?.length > 0) {
       return { cleanThreads: threadsFile };

@@ -1,4 +1,5 @@
 const { app } = require('@azure/functions');
+const entityGraphBuilder = require('./helper/entityGraphBuilder');
 require("dotenv").config();
 
 class EntitiesManager {
@@ -43,21 +44,36 @@ async function updateEntitiesInGraph(document, context) {
 	const graphBuilder = await EntitiesManager.getInstance().getGraphBuilder();
 
 	// 1. Create a vertex for the document itself
-	await graphBuilder.upsertDocumentVertex(document.id, document.metadata);
+	try {
+		await graphBuilder.upsertDocumentVertex(document.id, document.metadata);
+	} catch (err) {
+		context.log("Error creating document vertex:", err);
+		return {
+			error: err
+		};
+	}
 
 	// 2. Process each high-confidence entity
 	for (const entity of highConfidenceEntities) {
-		const canonicalEntityId = await graphBuilder.upsertCanonicalEntity(entity);
+		try {
+			const canonicalEntityId = await graphBuilder.upsertCanonicalEntity(entity);
 
-		// Link this specific occurrence to the document
-		await graphBuilder.createAppearanceEdge(entity, canonicalEntityId, document.id);
+			// Link this specific occurrence to the document
+			await graphBuilder.createAppearanceEdge(entity, canonicalEntityId, document.id);
+		} catch (err) {
+			context.log(`Error processing entity ${entity.text}:`, err);
+		}
 	}
 
 	// 3. Create semantic relationships between the canonical entities
 	if (highConfidenceEntities.length > 1) {
 		for (let i = 0; i < highConfidenceEntities.length; i++) {
 			for (let j = i + 1; j < highConfidenceEntities.length; j++) {
-				await graphBuilder.createSemanticRelationship(highConfidenceEntities[i], highConfidenceEntities[j], document.id);
+				try {
+					await graphBuilder.createSemanticRelationship(highConfidenceEntities[i], highConfidenceEntities[j], document.id);
+				} catch (err) {
+					context.log(`Error creating relationship between ${highConfidenceEntities[i].text} and ${highConfidenceEntities[j].text}:`, err);
+				}
 			}
 		}
 	}

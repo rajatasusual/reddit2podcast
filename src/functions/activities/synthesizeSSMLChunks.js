@@ -58,6 +58,15 @@ function mergeWavBuffers(buffers) {
 }
 
 module.exports.synthesizeSSMLChunks = async function synthesizeSsmlChunks(input, context = {}) {
+  if (context.env === 'TEST' && context.skip?.synthesis) {
+    const path = require('path');
+    const fs = require('fs');
+    const mergedAudio = fs.readFileSync(path.join(process.cwd(), `src/data/${input.subreddit}/audio.wav`), 'utf-8');
+    if (mergedAudio) {
+      return { mergedAudio, fullTranscript: require(path.join(process.cwd(), `src/data/${input.subreddit}/transcript.json`)) };
+    }
+  }
+
   const { ssmlChunks, episodeId } = input;
   if (!Array.isArray(ssmlChunks) || ssmlChunks.length === 0) {
     throw new Error("Input must include non-empty ssmlChunks array.");

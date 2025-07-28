@@ -88,7 +88,7 @@ module.exports.generateContentAnalysis = async function analyzeContentWithPerple
   if (context.env === 'TEST' && context.skip?.ssml) {
     try {
       const path = require('path');
-      const testData = require(path.join(process.cwd(), 'src/data/contentAnalysis.json'));
+      const testData = require(path.join(process.cwd(), `src/data/${input.subreddit}/contentAnalysis.json`));
       if (testData) return testData;
     } catch (err) {
       context.log?.("Could not load test data:", err);
