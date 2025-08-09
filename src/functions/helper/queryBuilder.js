@@ -22,53 +22,39 @@ class QueryBuilder {
       lparen: '(',
       rparen: ')',
       colon: ':',
-
-      AND: ['AND', 'and'],
-      OR: ['OR', 'or'],
-      NOT: ['NOT', 'not'],
-
+      AND: { match: /\b(?:AND|and)\b/ },
+      OR: { match: /\b(?:OR|or)\b/ },
+      NOT: { match: /\b(?:NOT|not)\b/ },
       category: 'category',
       subCategory: 'subCategory',
       type: 'type',
-
       quotedString: {
         match: /"(?:[^"\\]|\\.)*"/,
         value: s => s.slice(1, -1)
       },
-
       identifier: /[a-zA-Z0-9._-]+/
     });
 
     const grammarRules = [
       { name: 'main', symbols: ['_', 'expression', '_'], postprocess: d => d[1] },
-
       { name: 'expression', symbols: ['expression', '_', 'OR', '_', 'andExpression'], postprocess: d => ({ type: 'OR', left: d[0], right: d[4] }) },
       { name: 'expression', symbols: ['andExpression'], postprocess: d => d[0] },
-
       { name: 'andExpression', symbols: ['andExpression', '_', 'AND', '_', 'notExpression'], postprocess: d => ({ type: 'AND', left: d[0], right: d[4] }) },
       { name: 'andExpression', symbols: ['andExpression', '__', 'notExpression'], postprocess: d => ({ type: 'AND', left: d[0], right: d[2] }) },
       { name: 'andExpression', symbols: ['notExpression'], postprocess: d => d[0] },
-
       { name: 'notExpression', symbols: ['NOT', '__', 'atom'], postprocess: d => ({ type: 'NOT', operand: d[2] }) },
       { name: 'notExpression', symbols: ['atom'], postprocess: d => d[0] },
-
       { name: 'atom', symbols: ['lparen', '_', 'expression', '_', 'rparen'], postprocess: d => d[2] },
       { name: 'atom', symbols: ['term'], postprocess: d => d[0] },
-
       { name: 'term', symbols: ['fieldSearch'], postprocess: d => d[0] },
       { name: 'term', symbols: ['quotedString'], postprocess: d => ({ type: 'TERM', field: 'text', value: d[0] }) },
       { name: 'term', symbols: ['identifier'], postprocess: d => ({ type: 'TERM', field: 'text', value: d[0] }) },
-
-      // fix: allow optional spaces around colon in field search
       { name: 'fieldSearch', symbols: ['fieldName', '_', 'colon', '_', 'fieldValue'], postprocess: d => ({ type: 'TERM', field: d[0], value: d[4] }) },
-
       { name: 'fieldName', symbols: ['category'], postprocess: () => 'category' },
       { name: 'fieldName', symbols: ['subCategory'], postprocess: () => 'subCategory' },
-      { name: 'fieldName', symbols: ['type'], postprocess: () => 'category' },
-
+      { name: 'fieldName', symbols: ['type'], postprocess: () => 'type' },
       { name: 'fieldValue', symbols: ['quotedString'], postprocess: d => d[0] },
       { name: 'fieldValue', symbols: ['identifier'], postprocess: d => d[0] },
-
       { name: 'OR', symbols: [{ type: 'OR' }], postprocess: d => d[0].value },
       { name: 'AND', symbols: [{ type: 'AND' }], postprocess: d => d[0].value },
       { name: 'NOT', symbols: [{ type: 'NOT' }], postprocess: d => d[0].value },
@@ -80,7 +66,6 @@ class QueryBuilder {
       { name: 'type', symbols: [{ type: 'type' }], postprocess: d => d[0].value },
       { name: 'quotedString', symbols: [{ type: 'quotedString' }], postprocess: d => d[0].value },
       { name: 'identifier', symbols: [{ type: 'identifier' }], postprocess: d => d[0].value },
-
       { name: '_', symbols: [], postprocess: () => null },
       { name: '_', symbols: [{ type: 'WS' }], postprocess: () => null },
       { name: '__', symbols: [{ type: 'WS' }], postprocess: () => null }
@@ -91,6 +76,7 @@ class QueryBuilder {
       ParserRules: grammarRules,
       ParserStart: 'main'
     });
+
   }
 
   _parse(queryString) {
@@ -102,7 +88,7 @@ class QueryBuilder {
       const parser = new nearley.Parser(this.grammar);
       parser.feed(queryString.trim());
       if (parser.results.length === 0) return null;
-      return parser.results[0];
+      return parser.results[0]; // no ambiguity
     } catch (error) {
       console.error('Parse error:', error.message);
       return null;
@@ -131,7 +117,7 @@ class QueryBuilder {
 
   _escapeGremlinString(str) {
     if (!str) return '';
-    return str.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   }
 }
 
