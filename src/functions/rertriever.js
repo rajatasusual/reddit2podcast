@@ -204,7 +204,7 @@ app.http('episodes', {
 });
 
 app.http('graphQuery', {
-  methods: ['POST'],
+  methods: ['GET'],
   authLevel: 'anonymous',
   route: 'query',
   handler: async (request, context) => {
