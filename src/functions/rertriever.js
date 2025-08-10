@@ -110,6 +110,63 @@ async function createOrRetrieveSASToken(userInfo) {
   return sasToken;
 }
 
+async function getEpisodes(subredditQuery = null, episodeIds = null) {
+  const tableManager = new TableManager("PodcastEpisodes");
+  await tableManager.init();
+  const tableClient = tableManager.getClient();
+
+  const episodes = [];
+
+  // Collect individual filter clauses
+  const filters = [`PartitionKey eq 'episodes'`];
+
+  if (subredditQuery) {
+    // Escape single quotes for OData filter
+    const escaped = subredditQuery.replace(/'/g, "''");
+    filters.push(`subreddit eq '${escaped}'`);
+  }
+
+  if (episodeIds) {
+    let rowKeyClause;
+    if (Array.isArray(episodeIds) && episodeIds.length > 0) {
+      // Build: (rowKey eq 'id1' or rowKey eq 'id2' or ...)
+      const orParts = episodeIds.map(id => {
+        const escapedId = id.replace(/'/g, "''");
+        return `RowKey eq '${escapedId}'`;
+      });
+      rowKeyClause = `(${orParts.join(' or ')})`;
+    } else {
+      return [];
+    }
+    filters.push(rowKeyClause);
+  }
+
+  // Join all clauses with "and"
+  const filter = filters.join(' and ');
+
+  // Query
+  const entities = tableClient.listEntities({ queryOptions: { filter } });
+  for await (const e of entities) {
+    episodes.push({
+      title:      e.rowKey,
+      subreddit:  e.subreddit,
+      audioUrl:   e.audioUrl,
+      jsonUrl:    e.jsonUrl,
+      ssmlUrl:    e.ssmlUrl,
+      createdOn:  e.createdOn,
+      summary:    e.summary,
+      transcriptsUrl: e.transcriptsUrl
+    });
+  }
+
+  // Sort newest first
+  episodes.sort(
+    (a, b) => new Date(b.createdOn) - new Date(a.createdOn)
+  );
+
+  return episodes;
+}
+
 app.http('episodes', {
   methods: ['POST'],
   authLevel: 'anonymous',
@@ -137,40 +194,13 @@ app.http('episodes', {
     }
 
     try {
-      const sasToken = await createOrRetrieveSASToken(userInfo);
-
-      const tableManager = new TableManager("PodcastEpisodes");
-      await tableManager.init();
-      const tableClient = tableManager.getClient();
-
       // Get subreddit from query
       const subredditQuery = request.query.get('subreddit');
       context.log(`Querying episodes. Subreddit filter: ${subredditQuery || 'all'}`);
 
-      const episodes = [];
+      const sasToken = await createOrRetrieveSASToken(userInfo);
 
-      // Build filter string for Azure Table query
-      let filter = `PartitionKey eq 'episodes'`;
-      if (subredditQuery) {
-        // Escape single quotes for OData filter
-        const escapedSubreddit = subredditQuery.replace(/'/g, "''");
-        filter += ` and subreddit eq '${escapedSubreddit}'`;
-      }
-
-      const entities = tableClient.listEntities({ queryOptions: { filter } });
-      for await (const entity of entities) {
-        episodes.push({
-          title: entity.rowKey,
-          subreddit: entity.subreddit,
-          audioUrl: entity.audioUrl,
-          jsonUrl: entity.jsonUrl,
-          ssmlUrl: entity.ssmlUrl,
-          createdOn: entity.createdOn,
-          summary: entity.summary,
-          transcriptsUrl: entity.transcriptsUrl
-        });
-      }
-      episodes.sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
+      const episodes = await getEpisodes(subredditQuery);
 
       if (!episodes.length) {
         context.log("No episodes found.");
@@ -209,16 +239,19 @@ app.http('graphQuery', {
   route: 'query',
   handler: async (request, context) => {
     const query = request.query?.get('q');
-    
+
     if (!query) {
       return { status: 400, body: "Missing or invalid 'q' parameter." };
     }
 
     try {
       const service = require('./helper/entitySearchService');
-      const result = await service.findDocumentsForQuery(query);
-      
-      return { status: 200, body: JSON.stringify(result) };
+      const documents = await service.findDocumentsForQuery(query);
+
+      const episodeIds = documents.map(doc => doc.id);
+      const episodes = await getEpisodes(null, episodeIds);
+
+      return { status: 200, body: JSON.stringify({ episodes, documents }) };
     } catch (error) {
       context.log("Query Error:", error);
       return { status: 500, body: "Query processing failed" };
