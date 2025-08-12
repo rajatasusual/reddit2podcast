@@ -108,7 +108,10 @@ class QueryBuilder {
       case 'TERM':
         const val = this._escapeGremlinString(node.value);
         return node.field === 'text'
-          ? `__.in('appears_in').has('text', '${val}')`
+          ? `__.in('appears_in').or(__.has('text', '${val.toUpperCase()}'), 
+          __.has('text', '${val.toLowerCase()}'),
+          __.has('text', '${val.charAt(0).toUpperCase() + val.slice(1).toLowerCase()}'), 
+          __.has('text', '${val}'))`
           : `__.in('appears_in').has('${node.field}', '${val}')`;
       default:
         throw new Error(`Unknown AST node type: ${node.type}`);
