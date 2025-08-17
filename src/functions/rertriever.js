@@ -148,13 +148,13 @@ async function getEpisodes(subredditQuery = null, episodeIds = null) {
   const entities = tableClient.listEntities({ queryOptions: { filter } });
   for await (const e of entities) {
     episodes.push({
-      title:      e.rowKey,
-      subreddit:  e.subreddit,
-      audioUrl:   e.audioUrl,
-      jsonUrl:    e.jsonUrl,
-      ssmlUrl:    e.ssmlUrl,
-      createdOn:  e.createdOn,
-      summary:    e.summary,
+      title: e.rowKey,
+      subreddit: e.subreddit,
+      audioUrl: e.audioUrl,
+      jsonUrl: e.jsonUrl,
+      ssmlUrl: e.ssmlUrl,
+      createdOn: e.createdOn,
+      summary: e.summary,
       transcriptsUrl: e.transcriptsUrl
     });
   }
@@ -230,6 +230,133 @@ app.http('episodes', {
         })
       };
     }
+  }
+});
+
+app.http('subreddits', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'subreddits',
+  handler: async (request, context) => {
+    const tableManager = new TableManager("PodcastEpisodes");
+    await tableManager.init();
+    const tableClient = tableManager.getClient();
+
+    const subreddits = new Set();
+    const entities = tableClient.listEntities({ queryOptions: { filter: `PartitionKey eq 'episodes'` } });
+    for await (const e of entities) {
+      subreddits.add(e.subreddit);
+    }
+
+    return {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([...subreddits])
+    };
+  }
+});
+
+
+app.http('categories', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'categories',
+  handler: async (request, context) => {
+    const service = require('./helper/entitySearchService');
+    const categories = await service.listCategories();
+    return {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(categories)
+    };
+  }
+});
+
+app.http('subCategories', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'subcategories',
+  handler: async (request, context) => {
+    const categories = request.query && decodeURIComponent(request.query.get('q'));
+    if (categories) {
+      const service = require('./helper/entitySearchService');
+
+      const subCategoriesMap = [];
+
+      for (const category of categories.split(',')) {
+        const subCategories = await service.listSubCategories(category);
+        for (const subCategory of subCategories) {
+          if (subCategory === '' || subCategoriesMap.some(item => item.name === subCategory)) {
+            continue;
+          }
+          subCategoriesMap.push({ value: subCategory, label: subCategory });
+        }
+      }
+      return {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subCategoriesMap)
+      };
+
+
+    } else {
+      return {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Missing or invalid categories parameter' })
+      };
+    }
+
+  }
+});
+
+app.http('dateRange', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'date-range',
+  handler: async (request, context) => {
+    const tableManager = new TableManager("PodcastEpisodes");
+    await tableManager.init();
+    const tableClient = tableManager.getClient();
+
+    const entities = tableClient.listEntities({
+      queryOptions: {
+        filter: `PartitionKey eq 'episodes'`,
+        select: ['TimeStamp']
+      }
+    });
+
+    function extractDate(encodedString) {
+      // Match the datetime portion using regex
+      const match = encodedString.match(/datetime'(.*?)'/);
+      if (!match || !match[1]) return null;
+
+      // Decode URI components (e.g., %3A becomes :)
+      const decodedDateStr = decodeURIComponent(match[1]);
+
+      // Convert to Date object
+      const date = new Date(decodedDateStr);
+
+      // Check for valid date
+      return isNaN(date.getTime()) ? null : date;
+    }
+
+    const dates = [];
+    for await (const e of entities) {
+      const date = extractDate(e.etag);
+      if (date) {
+        dates.push(date.getTime());
+      }
+    }
+
+    const minDate = new Date(Math.min(...dates)).toISOString().split('T')[0];
+    const maxDate = new Date(Math.max(...dates)).toISOString().split('T')[0];
+
+    return {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ minDate, maxDate })
+    };
   }
 });
 

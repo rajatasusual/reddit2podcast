@@ -19,6 +19,41 @@ class EntitySearchService {
   }
 
   /**
+   * Finds all categories in the graph.
+   * Purpose: Get a list of all top-level categories in the graph.
+   * @returns {Promise<Array<string>>} - An array of strings representing the categories.
+   */
+  async listCategories() {
+    const query = `g.V().hasLabel('entity').values('category').dedup()`;
+    return await cosmosClient.executeQuery(query);
+  }
+
+  /**
+   * Finds all subCategories for a given category in the graph.
+   * @param {string} category - The category to search for subCategories.
+   * @returns {Promise<Array<string>>} - An array of strings representing the subCategories.
+   */
+  async listSubCategories(category) {
+    const query = `g.V().hasLabel('entity').has('category', c).values('subCategory').dedup()`;
+    const bindings = { c: category };
+    return await cosmosClient.executeQuery(query, bindings);
+  }
+
+  /**
+   * Finds canonical entity vertices by their category and subCategory.
+   * Purpose: Search for entities of a certain type (e.g., all 'Organizations' in the 'Company' subCategory).
+   * @param {string} category - The top-level category of the entities to search for.
+   * @param {string} subCategory - The subCategory of the entities to search for.
+   * @returns {Promise<Array<{id: string, text: string, category: string, subCategory: string}>>} - An array of objects with the requested properties.
+   */
+
+  async findEntitiesByCategoryAndSubCategory(category, subCategory) {
+    const query = `g.V().hasLabel('entity').has('category', c).has('subCategory', s).valueMap(true)`;
+    const bindings = { c: category, s: subCategory };
+    return await cosmosClient.executeQuery(query, bindings);
+  }
+
+  /**
    * Finds canonical entity vertices by their category.
    * Purpose: General search for entities of a certain type (e.g., all 'Organizations').
    */
